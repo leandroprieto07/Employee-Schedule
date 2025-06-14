@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Shift Calendar</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="login-container">
+        <h2>Login</h2>
+        <form id="login-form">
+            <label for="username">Username:</label>
+            <input type="text" id="username" required>
+            <label for="password">Password:</label>
+            <input type="password" id="password" required>
+            <button type="submit">Enter</button>
+            <p id="login-message" class="error-message"></p>
+        </form>
+    </div>
+
+    <div id="app-container" style="display: none;">
+        <header>
+            <h1>Employee Shift Calendar</h1>
+            <nav>
+                <span id="user-info"></span>
+                <button id="logout-button">Logout</button>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Calendar Controls Section -->
+            <section class="calendar-controls-container">
+                <button id="prev-week">← Previous Week</button>
+                <span id="current-week-range"></span>
+                <button id="next-week">Next Week →</button>
+                <button id="export-excel-button">Export to Excel</button>
+            </section>
+
+            <!-- Shift Calendar Table -->
+            <section id="shifts-calendar-section">
+                <div class="table-scroll-wrapper">
+                    <table id="shifts-table">
+                        <thead>
+                            <tr id="employee-info-header">
+                                <th rowspan="2">Area</th>
+                                <th rowspan="2">Tech #</th>
+                                <th rowspan="2">First</th>
+                                <th rowspan="2">Last</th>
+                                <th rowspan="2">Supervisor</th>
+                                <th rowspan="2">Status</th> <!-- Column for general status (Working/Travel) -->
+                            </tr>
+                            <tr id="date-header">
+                                <!-- Dates will be generated here by JS -->
+                            </tr>
+                        </thead>
+                        <tbody id="shifts-table-body">
+                            <!-- Employee rows and their shifts will be generated here by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Admin Section Container -->
+            <div id="admin-main-section" style="display: none;">
+
+                <!-- Section for Employee Management -->
+                <section id="employee-management-section">
+                    <h2>Employee Management</h2>
+                    <form id="add-employee-form">
+                        <label for="employee-area">Area:</label>
+                        <input type="text" id="employee-area" required>
+                        <label for="employee-tech-number">Tech #:</label>
+                        <input type="text" id="employee-tech-number" required>
+                        <label for="employee-first-name">First Name:</label>
+                        <input type="text" id="employee-first-name" required>
+                        <label for="employee-last-name">Last Name:</label>
+                        <input type="text" id="employee-last-name" required>
+                        <label for="employee-supervisor">Linked Supervisor (Display Name):</label>
+                        <input type="text" id="employee-supervisor" required>
+                        <button type="submit">Add Employee</button>
+                    </form>
+                    <h3>Employee List</h3>
+                    <table id="employee-list-table">
+                        <thead>
+                            <tr>
+                                <th>Area</th>
+                                <th>Tech #</th>
+                                <th>First Name</th>
+                                <th>Last Name</th>
+                                <th>Supervisor</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employee-list-body">
+                            <!-- Employees will be listed here by JS -->
+                        </tbody>
+                    </table>
+                </section>
+
+                <!-- NEW: User Management Section -->
+                <section id="user-management-section">
+                    <h2>User Management</h2>
+                    <form id="add-user-form">
+                        <h3>Create New User</h3>
+                        <label for="new-username">Username:</label>
+                        <input type="text" id="new-username" required>
+                        <label for="new-password">Password:</label>
+                        <input type="password" id="new-password" required>
+                        <label for="new-supervisor-name">Supervisor Display Name (for Supervisor role only):</label>
+                        <input type="text" id="new-supervisor-name"> <!-- This will store the supervisor's display name -->
+                        <label for="new-user-role">Role:</label>
+                        <select id="new-user-role">
+                            <option value="supervisor">Supervisor</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <button type="submit">Create User</button>
+                        <p id="user-creation-message" class="error-message"></p>
+                    </form>
+                    <h3>Existing Users</h3>
+                    <table id="user-list-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-list-body">
+                            <!-- Users will be listed here by JS -->
+                        </tbody>
+                    </table>
+                </section>
+
+            </div> <!-- End of admin-main-section -->
+
+
+            <!-- Modal for editing day status (will be shown by JS) -->
+            <div id="status-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close-button">&times;</span>
+                    <h3>Change Day Status</h3>
+                    <p>Employee: <span id="modal-employee-name"></span></p>
+                    <p>Date: <span id="modal-date"></span></p>
+                    
+                    <div id="status-select-container"> <!-- Container for the select dropdown -->
+                        <label for="status-select">Status:</label>
+                        <select id="status-select">
+                            <option value="working">Working</option>
+                            <option value="off">OFF</option>
+                            <option value="pto">PTO</option>
+                            <option value="travel">Travel</option>
+                        </select>
+                    </div>
+
+                    <div id="admin-actions-container"></div> <!-- Container for Admin approval/rejection buttons -->
+                    
+                    <button id="save-status-button">Save</button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- External JavaScript libraries. Crucial to load BEFORE your script.js -->
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <!-- Your script.js MUST go at the end of the body to ensure all HTML elements are loaded -->
+    <script src="script.js"></script>
+
+</body>
+</html>
