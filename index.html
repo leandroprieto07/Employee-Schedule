@@ -1,88 +1,315 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employe Shift Calendar</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
+    <title>Employee Shift Calendar - Firebase</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS for Excel export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- FileSaver.js for saving the Excel file -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        body {
+            font-family: "Inter", sans-serif;
+            background-color: #f0f4f8;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+        .rounded-lg {
+            border-radius: 0.5rem;
+        }
+        .shadow-md {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch; /* For smoother scrolling on iOS */
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px; /* Ensure table doesn't get too narrow */
+        }
+        th, td {
+            border: 1px solid #e2e8f0; /* Tailwind's gray-200 */
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            white-space: nowrap; /* Prevent wrapping in cells */
+        }
+        th {
+            background-color: #e2e8f0;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        td {
+            background-color: #fff;
+        }
+        .date-col {
+            min-width: 80px; /* Ensure date columns have enough width */
+        }
+        .weekend {
+            background-color: #fbd38d; /* Orange-200 */
+            color: #7c3a0b; /* Orange-900 */
+        }
+        .today-column {
+            border: 2px solid #3b82f6; /* Blue-500 */
+            background-color: #bfdbfe; /* Blue-100 */
+        }
 
-    <div id="login-container">
-        <h2>Login</h2>
-        <form id="login-form">
-            <label for="username">Username:</label>
-            <input type="text" id="username" required>
-            <label for="password">Password:</label>
-            <input type="password" id="password" required>
-            <button type="submit">Enter</button>
-            <p id="login-message" class="error-message"></p>
+        /* Status Styling */
+        .working { background-color: #d1fae5; color: #065f46; } /* Green */
+        .absent { background-color: #fee2e2; color: #991b1b; } /* Red */
+        .leave { background-color: #bfdbfe; color: #1e40af; } /* Blue */
+        .holiday { background-color: #fef08a; color: #b45309; } /* Yellow */
+        .pending { background-color: #fef3c7; color: #92400e; border: 2px dashed #fbbf24; } /* Amber, dashed border */
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.6);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            padding: 2.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 500px;
+            position: relative;
+        }
+        .close-button {
+            color: #aaa;
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            font-size: 2rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: #333;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        button {
+            transition: all 0.2s ease-in-out;
+        }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        input[type="text"], input[type="password"], select {
+            border: 1px solid #d1d5db; /* Tailwind's gray-300 */
+            padding: 0.5rem;
+            border-radius: 0.375rem; /* Tailwind's rounded-md */
+            width: 100%;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        /* Custom alert/confirmation modal styles */
+        #custom-alert-modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 200; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+            justify-content: center; /* Center horizontally */
+            align-items: center; /* Center vertically */
+        }
+
+        #custom-alert-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 400px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        #custom-alert-message {
+            margin-bottom: 20px;
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        #custom-alert-buttons button {
+            background-color: #3b82f6; /* Blue-500 */
+            color: white;
+            padding: 10px 20px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        #custom-alert-buttons button:hover {
+            background-color: #2563eb; /* Blue-600 */
+        }
+
+        #custom-alert-buttons .cancel-button {
+            background-color: #ef4444; /* Red-500 */
+        }
+
+        #custom-alert-buttons .cancel-button:hover {
+            background-color: #dc2626; /* Red-600 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <!-- Custom Alert/Confirmation Modal -->
+    <div id="custom-alert-modal" class="modal">
+        <div id="custom-alert-content">
+            <p id="custom-alert-message"></p>
+            <div id="custom-alert-buttons" class="mt-4">
+                <button id="custom-alert-ok-button">OK</button>
+                <button id="custom-alert-cancel-button" class="cancel-button hidden">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Login Container -->
+    <div id="login-container" class="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
+        <h2 class="text-2xl font-bold text-center mb-6 text-gray-800">Login</h2>
+        <form id="login-form" class="space-y-4">
+            <div>
+                <label for="username" class="block text-gray-700 text-sm font-bold mb-2">Username:</label>
+                <input type="text" id="username" name="username" required
+                       class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+            </div>
+            <div>
+                <label for="password" class="block text-gray-700 text-sm font-bold mb-2">Password:</label>
+                <input type="password" id="password" name="password" required
+                       class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+            </div>
+            <p id="login-message" class="text-red-500 text-sm text-center"></p>
+            <button type="submit"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline w-full transition duration-300 ease-in-out">
+                Login
+            </button>
         </form>
     </div>
 
-    <div id="app-container" style="display: none;">
-        <header>
-            <h1>Employee Shift Calendar</h1>
-            <nav>
-                <span id="user-info"></span>
-                <button id="logout-button">Logout</button>
-            </nav>
+    <!-- Main Application Container -->
+    <div id="app-container" class="hidden container">
+        <header class="flex justify-between items-center bg-blue-600 text-white p-4 rounded-lg shadow-md mb-6">
+            <h1 class="text-3xl font-bold">Employee Shift Calendar</h1>
+            <div class="flex items-center space-x-4">
+                <span id="user-info" class="text-lg"></span>
+                <button id="logout-button"
+                        class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300 ease-in-out">
+                    Logout
+                </button>
+            </div>
         </header>
 
-        <main>
-            <!-- Calendar Controls Section -->
-            <section class="calendar-controls-container">
-                <button id="prev-week">← Previous Week</button>
-                <span id="current-week-range"></span>
-                <button id="next-week">Next Week →</button>
-                <button id="export-excel-button">Export to Excel</button>
-            </section>
-
-            <!-- Shift Calendar Table -->
-            <section id="shifts-calendar-section">
-                <div class="table-scroll-wrapper">
-                    <table id="shifts-table">
-                        <thead>
-                            <tr id="employee-info-header">
-                                <th rowspan="2">Area</th>
-                                <th rowspan="2">Tech #</th>
-                                <th rowspan="2">First</th>
-                                <th rowspan="2">Last</th>
-                                <th rowspan="2">Supervisor</th>
-                                <th rowspan="2">Status</th> <!-- Column for general status (Working/Travel) -->
-                            </tr>
+        <!-- Horizontal Shift Calendar -->
+        <section class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Employee Shifts</h2>
+            <div class="flex justify-between items-center mb-4">
+                <button id="prev-week"
+                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out">
+                    &lt; Prev Week
+                </button>
+                <span id="current-week-range" class="text-xl font-semibold text-gray-700"></span>
+                <button id="next-week"
+                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out">
+                    Next Week &gt;
+                </button>
+            </div>
+            <div class="table-container">
+                <table id="shifts-table" class="min-w-full">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">Area</th>
+                            <th rowspan="2">Tech #</th>
+                            <th rowspan="2">First Name</th>
+                            <th rowspan="2">Last Name</th>
+                            <th rowspan="2">Supervisor</th>
+                            <th rowspan="2">Status</th>
                             <tr id="date-header">
-                                <!-- Dates will be generated here by JS -->
+                                <!-- Date headers will be dynamically inserted here -->
                             </tr>
-                        </thead>
-                        <tbody id="shifts-table-body">
-                            <!-- Employee rows and their shifts will be generated here by JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+                        </tr>
+                    </thead>
+                    <tbody id="shifts-table-body">
+                        <!-- Employee rows and shift data will be dynamically inserted here -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-6 text-center">
+                <button id="export-excel-button"
+                        class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300 ease-in-out">
+                    Export to Excel
+                </button>
+            </div>
+        </section>
 
-            <!-- Admin Section Container -->
-            <div id="admin-main-section" style="display: none;">
-
-                <!-- Section for Employee Management -->
-                <section id="employee-management-section">
-                    <h2>Employee Management</h2>
-                    <form id="add-employee-form">
-                        <label for="employee-area">Area:</label>
-                        <input type="text" id="employee-area" required>
-                        <label for="employee-tech-number">Tech #:</label>
-                        <input type="text" id="employee-tech-number" required>
-                        <label for="employee-first-name">First Name:</label>
-                        <input type="text" id="employee-first-name" required>
-                        <label for="employee-last-name">Last Name:</label>
-                        <input type="text" id="employee-last-name" required>
-                        <label for="employee-supervisor">Linked Supervisor (Display Name):</label>
-                        <input type="text" id="employee-supervisor" required>
-                        <button type="submit">Add Employee</button>
-                    </form>
-                    <h3>Employee List</h3>
-                    <table id="employee-list-table">
+        <!-- Admin Main Section (Hidden by default, shown for admin role) -->
+        <div id="admin-main-section" class="hidden">
+            <!-- Employee Management Section -->
+            <section id="employee-management-section" class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Employee Management (Admin)</h2>
+                <form id="add-employee-form" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="form-group">
+                        <label for="employee-area" class="block text-gray-700 text-sm font-bold mb-2">Area:</label>
+                        <input type="text" id="employee-area" placeholder="Area"
+                               class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    </div>
+                    <div class="form-group">
+                        <label for="employee-tech-number" class="block text-gray-700 text-sm font-bold mb-2">Tech #:</label>
+                        <input type="text" id="employee-tech-number" placeholder="Tech Number" required
+                               class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    </div>
+                    <div class="form-group">
+                        <label for="employee-first-name" class="block text-gray-700 text-sm font-bold mb-2">First Name:</label>
+                        <input type="text" id="employee-first-name" placeholder="First Name" required
+                               class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    </div>
+                    <div class="form-group">
+                        <label for="employee-last-name" class="block text-gray-700 text-sm font-bold mb-2">Last Name:</label>
+                        <input type="text" id="employee-last-name" placeholder="Last Name" required
+                               class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    </div>
+                    <div class="form-group md:col-span-2">
+                        <label for="employee-supervisor" class="block text-gray-700 text-sm font-bold mb-2">Supervisor (Display Name):</label>
+                        <input type="text" id="employee-supervisor" placeholder="Supervisor's Display Name (e.g., Supervisor Alpha)"
+                               class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    </div>
+                    <button type="submit"
+                            class="md:col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300 ease-in-out">
+                        Add Employee
+                    </button>
+                </form>
+                <div class="table-container">
+                    <table class="w-full border-collapse">
                         <thead>
                             <tr>
                                 <th>Area</th>
@@ -94,32 +321,47 @@
                             </tr>
                         </thead>
                         <tbody id="employee-list-body">
-                            <!-- Employees will be listed here by JS -->
+                            <!-- Employee list will be dynamically inserted here -->
                         </tbody>
                     </table>
-                </section>
+                </div>
+            </section>
 
-                <!-- User Management Section -->
-                <section id="user-management-section">
-                    <h2>User Management</h2>
-                    <form id="add-user-form">
-                        <h3>Create New User</h3>
-                        <label for="new-username">Username:</label>
-                        <input type="text" id="new-username" required>
-                        <label for="new-password">Password:</label>
-                        <input type="password" id="new-password" required>
-                        <label for="new-supervisor-name">Supervisor Display Name (for Supervisor role only):</label>
-                        <input type="text" id="new-supervisor-name">
-                        <label for="new-user-role">Role:</label>
-                        <select id="new-user-role">
-                            <option value="supervisor">Supervisor</option>
+            <!-- User Management Section -->
+            <section id="user-management-section" class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">User Management (Admin)</h2>
+                <form id="add-user-form" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="form-group">
+                        <label for="new-username" class="block text-gray-700 text-sm font-bold mb-2">Username:</label>
+                        <input type="text" id="new-username" placeholder="New Username" required
+                               class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-password" class="block text-gray-700 text-sm font-bold mb-2">Password:</label>
+                        <input type="password" id="new-password" placeholder="New Password" required
+                               class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-user-role" class="block text-gray-700 text-sm font-bold mb-2">Role:</label>
+                        <select id="new-user-role" required
+                                class="w-full border rounded-lg py-2 px-3 text-gray-700">
                             <option value="admin">Admin</option>
+                            <option value="supervisor">Supervisor</option>
                         </select>
-                        <button type="submit">Create User</button>
-                        <p id="user-creation-message" class="error-message"></p>
-                    </form>
-                    <h3>Existing Users</h3>
-                    <table id="user-list-table">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-supervisor-name" class="block text-gray-700 text-sm font-bold mb-2">Supervisor Display Name (for Supervisors):</label>
+                        <input type="text" id="new-supervisor-name" placeholder="e.g., Supervisor Alpha"
+                               class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    </div>
+                    <button type="submit"
+                            class="md:col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline transition duration-300 ease-in-out">
+                        Add User
+                    </button>
+                    <p id="user-creation-message" class="md:col-span-2 text-center text-sm mt-2"></p>
+                </form>
+                <div class="table-container">
+                    <table class="w-full border-collapse">
                         <thead>
                             <tr>
                                 <th>Username</th>
@@ -128,46 +370,1073 @@
                             </tr>
                         </thead>
                         <tbody id="user-list-body">
-                            <!-- Users will be listed here by JS -->
+                            <!-- User list will be dynamically inserted here -->
                         </tbody>
                     </table>
-                </section>
-
-            </div> <!-- End of admin-main-section -->
-
-
-            <!-- Modal for editing day status (will be shown by JS) -->
-            <div id="status-modal" class="modal" style="display: none;">
-                <div class="modal-content">
-                    <span class="close-button">&times;</span>
-                    <h3>Change Day Status</h3>
-                    <p>Employee: <span id="modal-employee-name"></span></p>
-                    <p>Date: <span id="modal-date"></span></p>
-                    
-                    <div id="status-select-container">
-                        <label for="status-select">Status:</label>
-                        <select id="status-select">
-                            <option value="working">Working</option>
-                            <option value="off">OFF</option>
-                            <option value="pto">PTO</option>
-                            <option value="travel">Travel</option>
-                        </select>
-                    </div>
-
-                    <div id="admin-actions-container"></div>
-                    
-                    <button id="save-status-button">Save</button>
                 </div>
-            </div>
-
-        </main>
+            </section>
+        </div>
     </div>
 
-    <!-- External JavaScript libraries -->
-    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-    <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-    <!-- Your script.js MUST go at the end of the body -->
-    <script type="module" src="script.js"></script>
+    <!-- Day Status Modal -->
+    <div id="status-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h3 class="text-2xl font-bold mb-4 text-gray-800 text-center">Change Day Status</h3>
+            <p class="mb-2 text-gray-700">Employee: <strong id="modal-employee-name"></strong></p>
+            <p class="mb-4 text-gray-700">Date: <strong id="modal-date"></strong></p>
 
+            <div id="status-select-container" class="form-group">
+                <label for="status-select" class="block text-gray-700 text-sm font-bold mb-2">Select Status:</label>
+                <select id="status-select"
+                        class="w-full border rounded-lg py-2 px-3 text-gray-700">
+                    <option value="working">Working</option>
+                    <option value="absent">Absent</option>
+                    <option value="leave">Leave</option>
+                    <option value="holiday">Holiday</option>
+                </select>
+            </div>
+
+            <div id="admin-actions-container" class="mt-4 space-y-2 text-center">
+                <!-- Admin approval buttons for pending requests will go here -->
+            </div>
+
+            <button id="save-status-button"
+                    class="mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline w-full transition duration-300 ease-in-out">
+                Save Status
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.0/firebase-app.js"; // Updated SDK version
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.6.0/firebase-analytics.js"; // Updated SDK version
+        import {
+            getFirestore,
+            collection,
+            doc,
+            getDoc,
+            setDoc,
+            addDoc,
+            updateDoc,
+            deleteDoc,
+            onSnapshot,
+            query,
+            where,
+            // orderBy, // Commented out to avoid requiring composite indexes for simple order in this example
+            serverTimestamp,
+            writeBatch // Added writeBatch for atomic deletes
+        } from "https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore.js"; // Updated SDK version
+
+        // Firebase Configuration (from your snippet)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBiVrJhTmu8iK5vaC7l2ZJRzS-LFKND35Y",
+            authDomain: "schedule-58df7.firebaseapp.com",
+            projectId: "schedule-58df7",
+            storageBucket: "schedule-58df7.firebasestorage.app",
+            messagingSenderId: "890281566780",
+            appId: "1:890281566780:web:5d194f3b8009555a479939",
+            measurementId: "G-MJG67CRM6H"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app); // Analytics is initialized, but not directly used in logic.
+        const db = getFirestore(app); // Initialize Firestore
+
+        // --- Data Storage (Firebase Collections) ---
+        // We will store 'users', 'employees', and 'calendarData' in Firestore.
+        // 'users' collection will store user credentials.
+        // 'employees' collection will store employee details.
+        // 'calendarData' collection will store individual day statuses for employees.
+        const usersCollection = collection(db, "users");
+        const employeesCollection = collection(db, "employees");
+        const calendarDataCollection = collection(db, "calendarData");
+
+        // --- Global State Variables ---
+        // These will be updated by Firestore listeners
+        let users = {}; // Will be populated from Firestore
+        let currentUser = null;
+        let employees = []; // Will be populated from Firestore
+        // calendarData will be a map: { employeeId: { dateString: calendarEntryObject } }
+        let calendarData = {};
+
+        // --- DOM Elements ---
+        const loginContainer = document.getElementById('login-container');
+        const appContainer = document.getElementById('app-container');
+        const loginForm = document.getElementById('login-form');
+        const loginMessage = document.getElementById('login-message');
+        const userInfoSpan = document.getElementById('user-info');
+        const logoutButton = document.getElementById('logout-button');
+
+        const shiftsTable = document.getElementById('shifts-table');
+        const shiftsTableBody = document.getElementById('shifts-table-body');
+        const dateHeaderRow = document.getElementById('date-header');
+        const currentWeekRangeSpan = document.getElementById('current-week-range');
+        const prevWeekButton = document.getElementById('prev-week');
+        const nextWeekButton = document.getElementById('next-week');
+        const exportExcelButton = document.getElementById('export-excel-button');
+
+        const adminMainSection = document.getElementById('admin-main-section');
+        const employeeManagementSection = document.getElementById('employee-management-section');
+        const addEmployeeForm = document.getElementById('add-employee-form');
+        const employeeListBody = document.getElementById('employee-list-body');
+
+        const userManagementSection = document.getElementById('user-management-section');
+        const addUserForm = document.getElementById('add-user-form');
+        const newUsernameInput = document.getElementById('new-username');
+        const newPasswordInput = document.getElementById('new-password');
+        const newSupervisorNameInput = document.getElementById('new-supervisor-name');
+        const newUserRoleSelect = document.getElementById('new-user-role');
+        const userCreationMessage = document.getElementById('user-creation-message');
+        const userListBody = document.getElementById('user-list-body');
+
+        const statusModal = document.getElementById('status-modal');
+        const modalEmployeeName = document.getElementById('modal-employee-name');
+        const modalDate = document.getElementById('modal-date');
+        const statusSelect = document.getElementById('status-select');
+        const saveStatusButton = document.getElementById('save-status-button');
+        const closeButton = statusModal.querySelector('.close-button');
+
+        // Custom Alert/Confirm Modal Elements
+        const customAlertModal = document.getElementById('custom-alert-modal');
+        const customAlertMessage = document.getElementById('custom-alert-message');
+        const customAlertOkButton = document.getElementById('custom-alert-ok-button');
+        const customAlertCancelButton = document.getElementById('custom-alert-cancel-button');
+
+        // --- Calendar State Variables ---
+        let startDate = new Date(); // Initialized with current date
+        const DISPLAY_DAYS = 14; // Number of days to display
+
+        // Variables for the editing modal
+        let currentEditingEmployeeId = null;
+        let currentEditingDate = null;
+        let currentEditingCell = null;
+
+        // --- Custom Alert/Confirmation Functions ---
+        /**
+         * Displays a custom alert/confirmation modal instead of native alert/confirm.
+         * @param {string} message The message to display.
+         * @param {boolean} isConfirm Whether it's a confirmation (true) or just an alert (false).
+         * @returns {Promise<boolean>} Resolves with true if OK/Confirm, false if Cancel.
+         */
+        function showCustomModal(message, isConfirm = false) {
+            return new Promise((resolve) => {
+                customAlertMessage.textContent = message;
+                customAlertCancelButton.classList.toggle('hidden', !isConfirm);
+                customAlertOkButton.textContent = isConfirm ? 'Confirm' : 'OK';
+
+                const handleOk = () => {
+                    customAlertModal.style.display = 'none';
+                    customAlertOkButton.removeEventListener('click', handleOk);
+                    customAlertCancelButton.removeEventListener('click', handleCancel);
+                    resolve(true);
+                };
+
+                const handleCancel = () => {
+                    customAlertModal.style.display = 'none';
+                    customAlertOkButton.removeEventListener('click', handleOk);
+                    customAlertCancelButton.removeEventListener('click', handleCancel);
+                    resolve(false);
+                };
+
+                customAlertOkButton.addEventListener('click', handleOk);
+                customAlertCancelButton.addEventListener('click', handleCancel);
+
+                customAlertModal.style.display = 'flex';
+            });
+        }
+
+
+        // --- Utility Functions ---
+
+        /**
+         * Formats a Date object into a `YYYY-MM-DD` string.
+         * @param {Date} date - The Date object to format.
+         * @returns {string} The formatted date (e.g., "2023-01-15").
+         */
+        function formatDateYYYYMMDD(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        /**
+         * Formats a `YYYY-MM-DD` date string to MM/DD/YYYY.
+         * @param {string} dateStringYYYYMMDD - The date in `YYYY-MM-DD` format.
+         * @returns {string} The formatted date (e.g., "01/15/2023").
+         */
+        function formatDateMMDDYYYY(dateStringYYYYMMDD) {
+            const [year, month, day] = dateStringYYYYMMDD.split('-');
+            return `${month}/${day}/${year}`;
+        }
+
+        /**
+         * Checks if a given date is a weekend (Saturday or Sunday).
+         * @param {Date} date - The Date object to check.
+         * @returns {boolean} True if it's a weekend, false otherwise.
+         */
+        function isWeekend(date) {
+            const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+            return dayOfWeek === 0 || dayOfWeek === 6;
+        }
+
+        // --- Login/Logout Functions ---
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); // Prevents page reload on form submission.
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Fetch user from local 'users' state (populated by Firestore)
+            const user = users[username];
+
+            if (user && user.password === password) {
+                currentUser = { username: username, role: user.role };
+                if (user.role === 'supervisor' && user.displayName) {
+                    currentUser.displayName = user.displayName;
+                } else if (user.role === 'supervisor') {
+                    currentUser.displayName = username; // Fallback
+                }
+                loginMessage.textContent = '';
+                renderApp();
+            } else {
+                loginMessage.textContent = 'Incorrect username or password.';
+            }
+        });
+
+        logoutButton.addEventListener('click', () => {
+            currentUser = null; // Clears the current user.
+            loginContainer.style.display = 'block'; // Shows the login container.
+            appContainer.style.display = 'none'; // Hides the application container.
+            // No need to clear localStorage as data is now in Firestore.
+        });
+
+        /**
+         * Renders the main application interface after a successful login.
+         * Shows/hides sections based on the user's role.
+         */
+        function renderApp() {
+            loginContainer.style.display = 'none'; // Hides the login form.
+            appContainer.style.display = 'block'; // Shows the application interface.
+            const displayUserName = currentUser.role === 'supervisor' && currentUser.displayName ? currentUser.displayName : currentUser.username;
+            userInfoSpan.textContent = `Welcome, ${displayUserName} (${currentUser.role})`;
+
+            if (currentUser.role === 'admin') {
+                adminMainSection.style.display = 'block'; // Show the entire admin section
+                employeeManagementSection.style.display = 'block';
+                userManagementSection.style.display = 'block';
+            } else {
+                adminMainSection.style.display = 'none'; // Hide the entire admin section
+                employeeManagementSection.style.display = 'none';
+                userManagementSection.style.display = 'none';
+            }
+
+            renderShiftsCalendar(); // This will be driven by Firestore listener
+            renderEmployeeList(); // This will be driven by Firestore listener
+            renderUserList(); // This will be driven by Firestore listener
+        }
+
+        // --- Horizontal Shift Calendar Functions ---
+
+        /**
+         * Renders the horizontal shift calendar table.
+         * Dynamically generates date headers and employee rows.
+         */
+        function renderShiftsCalendar() {
+            // Clear date headers and table body before rendering.
+            dateHeaderRow.innerHTML = '';
+            shiftsTableBody.innerHTML = '';
+
+            // Adjust startDate to be the beginning of the week (Sunday)
+            const displayStartDate = new Date(startDate);
+            displayStartDate.setDate(displayStartDate.getDate() - displayStartDate.getDay()); // Set to Sunday of the current week
+
+            const currentDay = new Date(displayStartDate);
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            let firstDateDisplayed = null;
+            let lastDateDisplayed = null;
+
+            for (let i = 0; i < DISPLAY_DAYS; i++) {
+                const dateString = formatDateYYYYMMDD(currentDay);
+                const dayOfWeekName = currentDay.toLocaleString('en-US', { weekday: 'short' });
+                const monthDay = currentDay.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+
+                const th = document.createElement('th');
+                th.innerHTML = `${monthDay}<br>${dayOfWeekName}`;
+                th.classList.add('date-col');
+
+                if (isWeekend(currentDay)) {
+                    th.classList.add('weekend');
+                }
+
+                if (currentDay.setHours(0,0,0,0) === today.getTime()) {
+                    th.classList.add('today-column');
+                }
+
+                dateHeaderRow.appendChild(th);
+
+                if (i === 0) firstDateDisplayed = new Date(currentDay);
+                if (i === DISPLAY_DAYS - 1) lastDateDisplayed = new Date(currentDay);
+
+                currentDay.setDate(currentDay.getDate() + 1);
+            }
+
+            if (firstDateDisplayed && lastDateDisplayed) {
+                const start = firstDateDisplayed.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                const end = lastDateDisplayed.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                currentWeekRangeSpan.textContent = `${start} - ${end}`;
+            }
+
+            // Render employee rows based on the 'employees' global state (updated by Firestore listener)
+            employees.forEach(employee => {
+                const row = document.createElement('tr');
+                row.dataset.employeeId = employee.id;
+
+                const supervisorDisplayName = employee.supervisor || ''; // Use employee's supervisor field (which stores displayName)
+
+                row.innerHTML = `
+                    <td>${employee.area || ''}</td>
+                    <td>${employee.techNumber}</td>
+                    <td>${employee.firstName}</td>
+                    <td>${employee.lastName}</td>
+                    <td>${supervisorDisplayName}</td>
+                    <td>${employee.status || 'Working'}</td>
+                `;
+
+                // Use the adjusted displayStartDate for employee rows too
+                const tempDate = new Date(displayStartDate);
+
+                for (let i = 0; i < DISPLAY_DAYS; i++) {
+                    const dateString = formatDateYYYYMMDD(tempDate);
+                    // Get calendar entry from the global calendarData state
+                    const employeeCalendarForDate = calendarData[employee.id] ? calendarData[employee.id][dateString] : null;
+
+                    let statusToDisplay;
+                    let cssClassToAdd;
+
+                    if (employeeCalendarForDate && typeof employeeCalendarForDate === 'object') {
+                        if (employeeCalendarForDate.status === 'pending') {
+                            statusToDisplay = `PENDING (${employeeCalendarForDate.requestedStatus.toUpperCase()})`;
+                            cssClassToAdd = 'pending';
+                        } else {
+                            statusToDisplay = employeeCalendarForDate.status.toUpperCase();
+                            cssClassToAdd = employeeCalendarForDate.status;
+                        }
+                    } else { // Default to working if no entry or not an object
+                        statusToDisplay = 'WORKING';
+                        cssClassToAdd = 'working';
+                    }
+
+                    const cell = document.createElement('td');
+                    cell.textContent = statusToDisplay;
+                    cell.classList.add(cssClassToAdd);
+
+                    if (isWeekend(tempDate)) {
+                        cell.classList.add('weekend');
+                    }
+                    if (tempDate.setHours(0,0,0,0) === today.getTime()) {
+                        cell.classList.add('today-column');
+                    }
+
+                    cell.dataset.date = dateString;
+                    cell.dataset.employeeId = employee.id;
+
+                    // Handle cell click for editing based on user role and supervisor link (using displayName)
+                    if (currentUser) {
+                        const isSupervisorOfEmployee = (currentUser.role === 'supervisor' && employee.supervisor === currentUser.displayName);
+                        if (currentUser.role === 'admin' || isSupervisorOfEmployee) {
+                            cell.addEventListener('click', () => openStatusModal(employee, dateString, employeeCalendarForDate, cell));
+                        } else if (currentUser.role === 'supervisor' && !isSupervisorOfEmployee) {
+                            cell.style.cursor = 'not-allowed';
+                            cell.title = 'You can only manage shifts for your assigned employees.';
+                        }
+                    }
+
+                    row.appendChild(cell);
+                    tempDate.setDate(tempDate.getDate() + 1);
+                }
+                shiftsTableBody.appendChild(row);
+            });
+        }
+
+        // --- Calendar Navigation ---
+
+        // Navigate to the previous `DISPLAY_DAYS` block, adjusting to the nearest Sunday start
+        prevWeekButton.addEventListener('click', () => {
+            startDate.setDate(startDate.getDate() - DISPLAY_DAYS);
+            renderShiftsCalendar();
+        });
+
+        // Navigate to the next `DISPLAY_DAYS` block, adjusting to the nearest Sunday start
+        nextWeekButton.addEventListener('click', () => {
+            startDate.setDate(startDate.getDate() + DISPLAY_DAYS);
+            renderShiftsCalendar();
+        });
+
+        // --- Day Status Modal ---
+
+        function openStatusModal(employee, dateString, currentEntry, cell) {
+            // Basic permission check (using displayName)
+            if (currentUser.role === 'supervisor' && employee.supervisor !== currentUser.displayName) {
+                showCustomModal("You can only manage shifts for your assigned employees.");
+                return;
+            }
+
+            currentEditingEmployeeId = employee.id;
+            currentEditingDate = dateString;
+            currentEditingCell = cell; // Keep track of the cell for potential direct DOM update if needed (though onSnapshot will handle it)
+
+            modalEmployeeName.textContent = `${employee.firstName} ${employee.lastName} (Tech #: ${employee.techNumber})`;
+            modalDate.textContent = formatDateMMDDYYYY(dateString);
+
+            statusModal.querySelector('.modal-content h3').textContent = 'Change Day Status';
+            const statusSelectContainer = document.getElementById('status-select-container');
+            const adminActionsContainer = document.getElementById('admin-actions-container');
+
+            adminActionsContainer.innerHTML = '';
+            saveStatusButton.style.display = 'block';
+
+
+            if (currentUser.role === 'admin' && typeof currentEntry === 'object' && currentEntry.status === 'pending') {
+                statusModal.querySelector('.modal-content h3').textContent = 'Pending Approval Request';
+                statusSelectContainer.style.display = 'none';
+                saveStatusButton.style.display = 'none';
+
+                adminActionsContainer.innerHTML = `
+                    <p>Requested Status: <strong>${currentEntry.requestedStatus.toUpperCase()}</strong></p>
+                    <p>Requested by: <strong>${currentEntry.requestedBy}</strong></p>
+                    <button id="approve-request-button" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg mr-2">Approve</button>
+                    <button id="reject-request-button" class="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg">Reject</button>
+                `;
+
+                document.getElementById('approve-request-button').addEventListener('click', async () => {
+                    const statusDocId = `${currentEditingEmployeeId}_${currentEditingDate}`;
+                    try {
+                        await setDoc(doc(calendarDataCollection, statusDocId), {
+                            employeeId: currentEditingEmployeeId,
+                            date: currentEditingDate,
+                            status: currentEntry.requestedStatus, // Approve the requested status
+                            timestamp: serverTimestamp(),
+                            lastUpdatedBy: currentUser.username,
+                            lastUpdatedRole: currentUser.role
+                        });
+                        showCustomModal("Request approved.");
+                        statusModal.style.display = 'none';
+                    } catch (e) {
+                        console.error("Error approving request: ", e);
+                        showCustomModal("Error approving request. Check console.");
+                    }
+                });
+                document.getElementById('reject-request-button').addEventListener('click', async () => {
+                    const statusDocId = `${currentEditingEmployeeId}_${currentEditingDate}`;
+                    try {
+                        await setDoc(doc(calendarDataCollection, statusDocId), {
+                            employeeId: currentEditingEmployeeId,
+                            date: currentEditingDate,
+                            status: 'working', // Reject means revert to working
+                            timestamp: serverTimestamp(),
+                            lastUpdatedBy: currentUser.username,
+                            lastUpdatedRole: currentUser.role
+                        });
+                        showCustomModal("Request rejected.");
+                        statusModal.style.display = 'none';
+                    } catch (e) {
+                        console.error("Error rejecting request: ", e);
+                        showCustomModal("Error rejecting request. Check console.");
+                    }
+                });
+
+            } else {
+                statusSelectContainer.style.display = 'block';
+                const initialStatusValue = typeof currentEntry === 'object' ? currentEntry.status : (currentEntry || 'working');
+                statusSelect.value = initialStatusValue;
+            }
+
+            statusModal.style.display = 'flex';
+        }
+
+        closeButton.addEventListener('click', () => {
+            statusModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (event) => {
+            if (event.target === statusModal) {
+                statusModal.style.display = 'none';
+            }
+        });
+
+        saveStatusButton.addEventListener('click', async () => {
+            const newStatus = statusSelect.value;
+            const employeeToEdit = employees.find(emp => emp.id === currentEditingEmployeeId);
+
+            // Re-check supervisor linkage for robustness (using displayName)
+            if (currentUser.role === 'supervisor' && employeeToEdit.supervisor !== currentUser.displayName) {
+                showCustomModal("You can only manage shifts for your assigned employees.");
+                statusModal.style.display = 'none';
+                return;
+            }
+
+            const statusDocId = `${currentEditingEmployeeId}_${currentEditingDate}`; // Unique ID for calendar entry
+
+            if (currentUser.role === 'supervisor') {
+                try {
+                    await setDoc(doc(calendarDataCollection, statusDocId), {
+                        employeeId: currentEditingEmployeeId,
+                        date: currentEditingDate,
+                        status: 'pending', // Supervisors send pending requests
+                        requestedStatus: newStatus,
+                        requestedBy: currentUser.displayName,
+                        timestamp: serverTimestamp(),
+                        lastUpdatedBy: currentUser.username,
+                        lastUpdatedRole: currentUser.role
+                    });
+                    showCustomModal(`Request for ${newStatus.toUpperCase()} sent for approval.`);
+                    statusModal.style.display = 'none';
+                } catch (e) {
+                    console.error("Error sending pending request: ", e);
+                    showCustomModal("Error sending request. Check console.");
+                }
+
+            } else if (currentUser.role === 'admin') {
+                const currentEntryDoc = await getDoc(doc(calendarDataCollection, statusDocId));
+                const currentEntry = currentEntryDoc.exists() ? currentEntryDoc.data() : null;
+
+                if (currentEntry && typeof currentEntry === 'object' && currentEntry.status === 'pending') {
+                    const confirmOverride = await showCustomModal(`ADMIN: Do you want to apply ${newStatus.toUpperCase()} directly (overriding pending)?`, true);
+                    if (confirmOverride) {
+                        try {
+                            await setDoc(doc(calendarDataCollection, statusDocId), {
+                                employeeId: currentEditingEmployeeId,
+                                date: currentEditingDate,
+                                status: newStatus, // Admin can set directly
+                                timestamp: serverTimestamp(),
+                                lastUpdatedBy: currentUser.username,
+                                lastUpdatedRole: currentUser.role
+                            });
+                            showCustomModal("Status updated directly by Admin.");
+                            statusModal.style.display = 'none';
+                        } catch (e) {
+                            console.error("Error updating status directly: ", e);
+                            showCustomModal("Error updating status. Check console.");
+                        }
+                    } else {
+                        statusModal.style.display = 'none';
+                    }
+                } else {
+                    try {
+                        await setDoc(doc(calendarDataCollection, statusDocId), {
+                            employeeId: currentEditingEmployeeId,
+                            date: currentEditingDate,
+                            status: newStatus, // Admin can set directly
+                            timestamp: serverTimestamp(),
+                            lastUpdatedBy: currentUser.username,
+                            lastUpdatedRole: currentUser.role
+                        });
+                        showCustomModal("Status updated directly by Admin.");
+                        statusModal.style.display = 'none';
+                    } catch (e) {
+                        console.error("Error updating status directly: ", e);
+                        showCustomModal("Error updating status. Check console.");
+                    }
+                }
+            } else {
+                showCustomModal("You do not have permissions to modify the status.");
+                statusModal.style.display = 'none';
+            }
+        });
+
+
+        // --- Employee Management Functions (Admin) ---
+
+        addEmployeeForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (currentUser.role !== 'admin') {
+                showCustomModal("Only administrators can add employees.");
+                return;
+            }
+
+            const area = document.getElementById('employee-area').value;
+            const techNumber = document.getElementById('employee-tech-number').value;
+            const firstName = document.getElementById('employee-first-name').value;
+            const lastName = document.getElementById('employee-last-name').value;
+            const supervisor = document.getElementById('employee-supervisor').value.trim(); // Supervisor's DISPLAY name
+
+            // Validate that the entered supervisor display name exists as a supervisor
+            const supervisorExists = Object.values(users).some(user =>
+                user.role === 'supervisor' && user.displayName === supervisor
+            );
+
+            if (!supervisorExists && supervisor !== '') { // Allow empty supervisor if needed
+                showCustomModal("The linked Supervisor Display Name does not exist or is not a supervisor user. Please ensure the display name matches an existing supervisor user.");
+                return;
+            }
+
+            // Check for existing tech number
+            const techNumberExists = employees.some(emp => emp.techNumber === techNumber);
+            if (techNumberExists) {
+                showCustomModal("An employee with this Tech # already exists.");
+                return;
+            }
+
+            try {
+                // Add a new document with auto-generated ID to the employees collection
+                const docRef = await addDoc(employeesCollection, {
+                    area,
+                    techNumber,
+                    firstName,
+                    lastName,
+                    supervisor, // Store the supervisor's display name
+                    status: 'Working', // Default status
+                    createdAt: serverTimestamp()
+                });
+                console.log("Employee added with ID: ", docRef.id);
+                addEmployeeForm.reset();
+                // UI will update automatically via onSnapshot listener
+            } catch (e) {
+                console.error("Error adding employee: ", e);
+                showCustomModal("Error adding employee. Check console.");
+            }
+        });
+
+        // Real-time listener for Employees
+        onSnapshot(employeesCollection, (snapshot) => {
+            employees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderEmployeeList();
+            renderShiftsCalendar(); // Re-render calendar when employee data changes
+        }, (error) => {
+            console.error("Error fetching employees: ", error);
+        });
+
+        function renderEmployeeList() {
+            employeeListBody.innerHTML = '';
+            employees.forEach(emp => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${emp.area || ''}</td>
+                    <td>${emp.techNumber}</td>
+                    <td>${emp.firstName}</td>
+                    <td>${emp.lastName}</td>
+                    <td>${emp.supervisor || ''}</td> <!-- Display supervisor's display name -->
+                    <td>
+                        ${currentUser && currentUser.role === 'admin' ? `
+                            <button onclick="editEmployee('${emp.id}')" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded-lg mr-2">Edit</button>
+                            <button onclick="deleteEmployee('${emp.id}')" class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded-lg">Delete</button>
+                        ` : ''}
+                    </td>
+                `;
+                employeeListBody.appendChild(row);
+            });
+        }
+
+        async function editEmployee(id) {
+            if (currentUser.role !== 'admin') {
+                showCustomModal("Only administrators can edit employees.");
+                return;
+            }
+            const employee = employees.find(emp => emp.id === id);
+            if (!employee) return;
+
+            const newArea = await showCustomModal("New Area:", true) ? prompt("New Area:", employee.area) : null;
+            if (newArea === null) return;
+
+            const newTechNumber = await showCustomModal("New Tech #:", true) ? prompt("New Tech #:", employee.techNumber) : null;
+            if (newTechNumber === null) return;
+
+            // Check if newTechNumber already exists for *another* employee
+            if (newTechNumber !== employee.techNumber && employees.some(emp => emp.techNumber === newTechNumber)) {
+                showCustomModal("An employee with this Tech # already exists. Please choose a different one.");
+                return;
+            }
+
+            const newFirstName = await showCustomModal("New First Name:", true) ? prompt("New First Name:", employee.firstName) : null;
+            if (newFirstName === null) return;
+
+            const newLastName = await showCustomModal("New Last Name:", true) ? prompt("New Last Name:", employee.lastName) : null;
+            if (newLastName === null) return;
+
+            let newSupervisor = null;
+            if (await showCustomModal("New Supervisor (Display Name):", true)) {
+                newSupervisor = prompt("New Supervisor (Display Name):", employee.supervisor || '').trim();
+            } else {
+                return; // User cancelled
+            }
+
+
+            // Validate that the entered supervisor display name exists as a supervisor
+            const supervisorExists = Object.values(users).some(user =>
+                user.role === 'supervisor' && user.displayName === newSupervisor
+            );
+
+            if (!supervisorExists && newSupervisor !== '') {
+                showCustomModal("The linked Supervisor Display Name does not exist or is not a supervisor user. Please enter an existing supervisor's display name.");
+                return; // Stop editing if invalid supervisor
+            }
+
+            try {
+                const employeeRef = doc(employeesCollection, id);
+                await updateDoc(employeeRef, {
+                    area: newArea,
+                    techNumber: newTechNumber,
+                    firstName: newFirstName,
+                    lastName: newLastName,
+                    supervisor: newSupervisor,
+                    lastUpdated: serverTimestamp()
+                });
+                showCustomModal("Employee updated successfully.");
+                // UI will update automatically via onSnapshot listener
+            } catch (e) {
+                console.error("Error updating employee: ", e);
+                showCustomModal("Error updating employee. Check console.");
+            }
+        }
+
+        async function deleteEmployee(id) {
+            if (currentUser.role !== 'admin') {
+                showCustomModal("Only administrators can delete employees.");
+                return;
+            }
+            const confirmDelete = await showCustomModal("Are you sure you want to delete this employee? This will also delete all associated calendar data.", true);
+            if (confirmDelete) {
+                try {
+                    // Delete employee document
+                    await deleteDoc(doc(employeesCollection, id));
+
+                    // Delete all calendar entries for this employee
+                    const q = query(calendarDataCollection, where("employeeId", "==", id));
+                    const querySnapshot = await getDocs(q); // getDocs from the query method
+                    const batch = writeBatch(db); // Use a batch to delete multiple documents efficiently
+                    querySnapshot.forEach((doc) => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+
+                    showCustomModal("Employee and associated calendar data deleted.");
+                    // UI will update automatically via onSnapshot listeners
+                } catch (e) {
+                    console.error("Error deleting employee: ", e);
+                    showCustomModal("Error deleting employee. Check console.");
+                }
+            }
+        }
+        // Real-time listener for Calendar Data
+        onSnapshot(calendarDataCollection, (snapshot) => {
+            const newCalendarData = {};
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (!newCalendarData[data.employeeId]) {
+                    newCalendarData[data.employeeId] = {};
+                }
+                newCalendarData[data.employeeId][data.date] = data;
+            });
+            calendarData = newCalendarData;
+            renderShiftsCalendar(); // Re-render calendar when calendar data changes
+        }, (error) => {
+            console.error("Error fetching calendar data: ", error);
+        });
+
+
+        // --- NEW: User Management Functions (Admin) ---
+
+        // Handle add user form submission
+        addUserForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (currentUser.role !== 'admin') {
+                showCustomModal("Only administrators can manage users.");
+                return;
+            }
+
+            const newUsername = newUsernameInput.value.trim();
+            const newPassword = newPasswordInput.value.trim();
+            const newUserRole = newUserRoleSelect.value;
+            let newSupervisorDisplayName = newSupervisorNameInput.value.trim();
+
+            userCreationMessage.textContent = ''; // Clear previous messages
+
+            if (!newUsername || !newPassword) {
+                userCreationMessage.textContent = 'Username and password cannot be empty.';
+                userCreationMessage.style.color = 'red';
+                return;
+            }
+
+            // Check if username already exists in local 'users' state (updated by Firestore)
+            if (users[newUsername]) {
+                userCreationMessage.textContent = `User '${newUsername}' already exists.`;
+                userCreationMessage.style.color = 'red';
+                return;
+            }
+
+            // Prepare user data for Firestore
+            const newUserDocData = {
+                username: newUsername,
+                password: newPassword, // NOTE: In a real app, passwords should be hashed server-side!
+                role: newUserRole,
+                createdAt: serverTimestamp()
+            };
+
+            if (newUserRole === 'supervisor') {
+                newUserDocData.displayName = newSupervisorDisplayName || newUsername;
+            }
+
+            try {
+                // Use setDoc with username as ID to create/overwrite user (simulates single user document per username)
+                await setDoc(doc(usersCollection, newUsername), newUserDocData);
+                userCreationMessage.textContent = `User '${newUsername}' (${newUserRole}) created successfully.`;
+                userCreationMessage.style.color = 'green';
+                addUserForm.reset();
+                newSupervisorNameInput.value = ''; // Ensure this is also cleared
+                // UI will update automatically via onSnapshot listener for users
+            } catch (e) {
+                console.error("Error adding user: ", e);
+                userCreationMessage.textContent = "Error creating user. Check console.";
+                userCreationMessage.style.color = 'red';
+            }
+        });
+
+        // Real-time listener for Users
+        onSnapshot(usersCollection, (snapshot) => {
+            const newUsers = {};
+            snapshot.forEach(doc => {
+                const userData = doc.data();
+                newUsers[userData.username] = userData;
+            });
+            users = newUsers; // Update global users state
+            renderUserList(); // Re-render user list whenever users data changes
+            // If current user's details changed, re-render app to reflect role/display name changes
+            if (currentUser && users[currentUser.username]) {
+                const updatedUser = users[currentUser.username];
+                if (updatedUser.role !== currentUser.role || updatedUser.displayName !== currentUser.displayName) {
+                    currentUser = { username: updatedUser.username, role: updatedUser.role, displayName: updatedUser.displayName || updatedUser.username };
+                    renderApp(); // Re-render main app if user's own data changed
+                }
+            }
+        }, (error) => {
+            console.error("Error fetching users: ", error);
+        });
+
+
+        // Render the list of existing users
+        function renderUserList() {
+            userListBody.innerHTML = '';
+            for (const username in users) {
+                const user = users[username];
+                const row = document.createElement('tr');
+                const userDisplayInfo = user.role === 'supervisor' && user.displayName ? `(Display: ${user.displayName})` : '';
+                row.innerHTML = `
+                    <td>${username}</td>
+                    <td>${user.role} ${userDisplayInfo}</td>
+                    <td>
+                        ${currentUser && currentUser.role === 'admin' && username !== currentUser.username ? `
+                            <button onclick="deleteUser('${username}')" class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded-lg">Delete</button>
+                        ` : ''}
+                    </td>
+                `;
+                userListBody.appendChild(row);
+            }
+        }
+
+        // Delete a user (Admin only, cannot delete self)
+        async function deleteUser(usernameToDelete) {
+            if (currentUser.role !== 'admin') {
+                showCustomModal("Only administrators can delete users.");
+                return;
+            }
+            if (usernameToDelete === currentUser.username) {
+                showCustomModal("You cannot delete your own user account.");
+                return;
+            }
+
+            const confirmDel = await showCustomModal(`Are you sure you want to delete user '${usernameToDelete}'? This cannot be undone.`, true);
+            if (!confirmDel) return;
+
+            const userToDeleteDisplayName = users[usernameToDelete]?.displayName || usernameToDelete;
+            const employeesLinkedToUser = employees.filter(emp => emp.supervisor === userToDeleteDisplayName);
+
+            if (employeesLinkedToUser.length > 0) {
+                showCustomModal(`Cannot delete user '${usernameToDelete}' because ${employeesLinkedToUser.length} employee(s) are still linked to '${userToDeleteDisplayName}'. Please reassign these employees first.`);
+                return;
+            }
+
+            try {
+                await deleteDoc(doc(usersCollection, usernameToDelete));
+                showCustomModal(`User '${usernameToDelete}' deleted.`);
+                // UI will update automatically via onSnapshot listener
+            } catch (e) {
+                console.error("Error deleting user: ", e);
+                showCustomModal("Error deleting user. Check console.");
+            }
+        }
+
+        // Optional: Toggle visibility of Supervisor Name input based on role selection
+        newUserRoleSelect.addEventListener('change', () => {
+            if (newUserRoleSelect.value === 'admin') {
+                newSupervisorNameInput.style.display = 'none';
+                newSupervisorNameInput.removeAttribute('required');
+            } else {
+                newSupervisorNameInput.style.display = 'block';
+                newSupervisorNameInput.setAttribute('required', 'required');
+            }
+        });
+        // Initialize visibility on load
+        newUserRoleSelect.dispatchEvent(new Event('change'));
+
+
+        // --- Excel Export Function ---
+        // This function will fetch the current state of employees and calendar data
+        // from the global variables which are kept in sync by Firestore listeners.
+        exportExcelButton.addEventListener('click', async () => {
+            if (currentUser.role !== 'admin') {
+                showCustomModal("Only administrators can export the calendar.");
+                return;
+            }
+            exportCalendarToExcel();
+        });
+
+        function exportCalendarToExcel() {
+            const headerRow1 = ['Area', 'Tech #', 'First', 'Last', 'Supervisor', 'Status'];
+            const headerRow2 = ['', '', '', '', '', ''];
+
+            const datesForExport = [];
+            // Calculate the actual start date for the displayed range (Sunday of the week)
+            const effectiveStartDate = new Date(startDate);
+            effectiveStartDate.setDate(effectiveStartDate.getDate() - effectiveStartDate.getDay());
+
+            const tempDate = new Date(effectiveStartDate);
+
+            for (let i = 0; i < DISPLAY_DAYS; i++) {
+                const dayOfWeekName = tempDate.toLocaleString('en-US', { weekday: 'short' });
+                const monthDay = tempDate.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+
+                headerRow1.push(`${monthDay}`);
+                headerRow2.push(`${dayOfWeekName}`);
+
+                datesForExport.push(formatDateYYYYMMDD(tempDate));
+                tempDate.setDate(tempDate.getDate() + 1);
+            }
+
+            const data = [];
+            data.push(headerRow1);
+            data.push(headerRow2);
+
+            employees.forEach(emp => {
+                const rowData = [
+                    emp.area || '',
+                    emp.techNumber,
+                    emp.firstName,
+                    emp.lastName,
+                    emp.supervisor || '',
+                    emp.status || 'Working' // This 'status' is the general status, not daily.
+                ];
+
+                datesForExport.forEach(dateString => {
+                    // Get data from the global calendarData object, which is synced with Firestore
+                    const entry = calendarData[emp.id] ? calendarData[emp.id][dateString] : null;
+                    let statusForExport = '';
+
+                    if (entry && typeof entry === 'object' && entry.status === 'pending') {
+                        statusForExport = `PENDING (${entry.requestedStatus.toUpperCase()})`;
+                    } else if (entry && typeof entry === 'object' && entry.status) {
+                        statusForExport = entry.status.toUpperCase();
+                    } else {
+                        statusForExport = 'WORKING'; // Default if no specific entry for the day
+                    }
+                    rowData.push(statusForExport);
+                });
+                data.push(rowData);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(data);
+
+            const wscols = [];
+            for (let i = 0; i < headerRow1.length; i++) {
+                wscols.push({ wch: 10 });
+                if (i < 6) { // Adjust width for the initial info columns
+                    wscols[i].wch = 15;
+                }
+            }
+            ws['!cols'] = wscols;
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Employee Calendar");
+
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            saveAs(new Blob([wbout], { type: 'application/octet-stream' }), 'employee_calendar.xlsx');
+            showCustomModal("Calendar exported to Excel!");
+        }
+
+
+        // --- Initialization ---
+
+        /**
+         * Initializes the application by checking authentication status.
+         * For a production app, this would involve Firebase Auth.
+         * Here, it just checks if a 'currentUser' is set (after being populated by Firestore listener).
+         */
+        async function checkAuth() {
+            // Give Firestore listeners a moment to populate initial data
+            // In a real app, you'd probably use Firebase Auth's onAuthStateChanged
+            // and only proceed once all initial data is loaded/synced.
+            // For this simulation, we'll assume listeners populate 'users' quickly.
+            // This is a simplified check. A more robust solution would await initial
+            // data fetch or use a loading state. For this example, it's generally fine.
+            if (currentUser) {
+                renderApp();
+            } else {
+                loginContainer.style.display = 'block';
+                appContainer.style.display = 'none';
+            }
+        }
+
+        // Call checkAuth after all listeners are set up (or once DOM is ready)
+        document.addEventListener('DOMContentLoaded', () => {
+            // No need for immediate checkAuth here, as onSnapshot for users will trigger a re-render.
+            // The `renderApp` function will be called once `users` data is available and login is performed.
+            // Initial render of calendar (it will be empty until employees data loads)
+            startDate = new Date(); // Re-initialize startDate to today's date on load
+            renderShiftsCalendar(); // Initial render, will be updated by listeners for employees and calendarData
+        });
+
+
+        /*
+        IMPORTANT: FIREBASE FIRESTORE SECURITY RULES
+
+        For this application to work correctly with Firestore, you MUST set up
+        appropriate security rules in your Firebase Console. Go to:
+        Firebase Console -> schedule-58df7 -> Firestore Database -> Rules tab.
+
+        Here are example rules suitable for DEVELOPMENT (highly INSECURE for production):
+        These rules allow anyone to read and write to the 'users', 'employees', and 'calendarData' collections.
+        For a production application, you would implement Firebase Authentication
+        and restrict read/write access based on user roles and UIDs.
+
+        Example DEV Rules:
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+            // Allow public read/write to users (for simplicity of this demo login)
+            // In production, user management should be via Firebase Auth + Cloud Functions
+            match /users/{userId} {
+              allow read, write: if true;
+            }
+
+            // Allow public read/write to employees
+            match /employees/{employeeId} {
+              allow read, write: if true;
+            }
+
+            // Allow public read/write to calendarData
+            match /calendarData/{docId} {
+              allow read, write: if true;
+            }
+          }
+        }
+
+        After pasting these rules into the Firebase Console, remember to click "Publish".
+        */
+    </script>
 </body>
 </html>
