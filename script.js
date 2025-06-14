@@ -1,12 +1,29 @@
-// Global Firebase variables will be exposed via the <script type="module"> in index.html
-// e.g., window.firebaseApp, window.firebaseAuth, window.firebaseDb, etc.
+// --- Importaciones de Firebase SDK ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Firestore path constants for clarity and easy modification
-// Data stored under /artifacts/{appId}/public/data/ for shared access
-let appId; // Will be set from window.appId
-let db;    // Will be set from window.firebaseDb
-let auth;  // Will be set from window.firebaseAuth
+// --- Configuración de Firebase (TU PROPIA CLAVE API REAL AQUÍ) ---
+// Obtén esta configuración de tu consola de Firebase -> Configuración del proyecto -> Tus apps -> Configuración de la aplicación web.
+const firebaseConfig = {
+    apiKey: "AIzaSyC3u4FV6h1dzqQuWo2U8F7SxCe2AxoiG5M", // ¡REEMPLAZA ESTO CON TU CLAVE API REAL!
+    authDomain: "employee-shift-calendar-81868.firebaseapp.com",
+    projectId: "employee-shift-calendar-81868",
+    storageBucket: "employee-shift-calendar-81868.firebasestorage.app",
+    messagingSenderId: "1000655634680",
+    appId: "1:1000655634680:web:de80fa37b44bd9272efb0d",
+    measurementId: "G-2NXDB1ZC41"
+};
 
+// --- Inicialización de Firebase ---
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+
+// Usamos el projectId como el ID de la aplicación para las rutas de Firestore
+const appId = firebaseConfig.projectId;
+
+// Firestore path constants
 const COLLECTIONS = {
     APP_USERS: 'appUsers',    // Stores user login details (username, password, role, displayName)
     EMPLOYEES: 'employees'    // Stores employee data and their calendar shifts
@@ -17,6 +34,7 @@ let currentUser = null; // Currently logged-in app user (not Firebase Auth user)
 let employees = [];     // Array of employee objects, populated from Firestore
 let appUsers = {};      // Map of app users (username -> {password, role, displayName}), populated from Firestore
 let firebaseUserId = null; // The actual Firebase Authentication UID
+
 
 // --- DOM Elements ---
 const loginContainer = document.getElementById('login-container');
@@ -85,54 +103,43 @@ function isWeekend(date) {
 }
 
 
-// --- Firebase Initialization and Authentication Management ---
+// --- Firebase Authentication Management ---
 
-// This function will be called by the DOMContentLoaded listener in index.html
-window.onFirebaseReady = async () => {
-    appId = window.appId;
-    auth = window.firebaseAuth;
-    db = window.firebaseDb;
-
-    window.firebaseOnAuthStateChanged(auth, async (user) => {
-        if (user) {
-            firebaseUserId = user.uid;
-            console.log("Firebase Authenticated User ID:", firebaseUserId);
-            // Setup Firestore listeners once authenticated
-            setupFirestoreListeners();
-            // Try to log in with previously saved currentUser from localStorage
-            // or default to login form if no user selected yet
-            if (window.localStorage.getItem('currentUser')) {
-                 // If there's a stored currentUser, try to re-render with it
-                 currentUser = JSON.parse(window.localStorage.getItem('currentUser'));
-                 // Ensure displayName is updated from appUsers for current session
-                 if (currentUser.role === 'supervisor' && appUsers[currentUser.username] && appUsers[currentUser.username].displayName) {
-                    currentUser.displayName = appUsers[currentUser.username].displayName;
-                 } else if (currentUser.role === 'supervisor') {
-                    currentUser.displayName = currentUser.username;
-                 }
-                 renderApp();
-            } else {
-                // If no user was previously selected, show the login form
-                loginContainer.style.display = 'block';
-                appContainer.style.display = 'none';
-            }
+// This function handles the initial Firebase Auth state and sets up Firestore listeners.
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        firebaseUserId = user.uid;
+        console.log("Firebase Authenticated User ID:", firebaseUserId);
+        // Setup Firestore listeners once authenticated
+        setupFirestoreListeners();
+        // Try to log in with previously saved currentUser from localStorage
+        if (localStorage.getItem('currentUser')) {
+             currentUser = JSON.parse(localStorage.getItem('currentUser'));
+             // Ensure displayName is updated from appUsers for current session
+             if (currentUser.role === 'supervisor' && appUsers[currentUser.username] && appUsers[currentUser.username].displayName) {
+                currentUser.displayName = appUsers[currentUser.username].displayName;
+             } else if (currentUser.role === 'supervisor') {
+                currentUser.displayName = currentUser.username;
+             }
+             renderApp();
         } else {
-            // No Firebase user authenticated, try to sign in
-            try {
-                if (window.initialAuthToken) {
-                    await window.firebaseSignInWithCustomToken(auth, window.initialAuthToken);
-                } else {
-                    await window.firebaseSignInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("Firebase Auth error:", error);
-                loginMessage.textContent = "Authentication error. Please refresh.";
-                loginContainer.style.display = 'block';
-                appContainer.style.display = 'none';
-            }
+            // If no app user was previously selected, show the login form
+            loginContainer.style.display = 'block';
+            appContainer.style.display = 'none';
         }
-    });
-};
+    } else {
+        // No Firebase user authenticated, try to sign in anonymously
+        try {
+            await signInAnonymously(auth);
+            console.log("Signed in anonymously to Firebase.");
+        } catch (error) {
+            console.error("Firebase Auth error during anonymous sign-in:", error);
+            loginMessage.textContent = "Authentication error. Please refresh.";
+            loginContainer.style.display = 'block';
+            appContainer.style.display = 'none';
+        }
+    }
+});
 
 
 // --- Firestore Data Listeners ---
@@ -144,7 +151,7 @@ function setupFirestoreListeners() {
     }
 
     // Listener for App Users
-    window.firebaseOnSnapshot(window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`), (snapshot) => {
+    onSnapshot(collection(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`), (snapshot) => {
         const fetchedUsers = {};
         snapshot.forEach(doc => {
             fetchedUsers[doc.id] = doc.data();
@@ -162,7 +169,7 @@ function setupFirestoreListeners() {
         if (currentUser && appUsers[currentUser.username]) {
             currentUser.role = appUsers[currentUser.username].role;
             currentUser.displayName = appUsers[currentUser.username].displayName || currentUser.username;
-            window.localStorage.setItem('currentUser', JSON.stringify(currentUser)); // Update local storage
+            localStorage.setItem('currentUser', JSON.stringify(currentUser)); // Update local storage
         }
         renderUserList(); // Ensure user list is up-to-date
         renderApp(); // Re-render app to update UI based on new user roles/permissions
@@ -171,7 +178,7 @@ function setupFirestoreListeners() {
     });
 
     // Listener for Employees (and their calendar data)
-    window.firebaseOnSnapshot(window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`), (snapshot) => {
+    onSnapshot(collection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`), (snapshot) => {
         employees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         console.log("Fetched Employees:", employees);
         renderEmployeeList(); // Re-render employee list
@@ -188,12 +195,12 @@ async function createDefaultAppUsers() {
         return;
     }
     try {
-        await window.firebaseSetDoc(window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, 'admin'), {
+        await setDoc(doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, 'admin'), {
             password: 'adminpassword',
             role: 'admin',
             displayName: 'Admin User'
         });
-        await window.firebaseSetDoc(window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, 'supervisor1'), {
+        await setDoc(doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, 'supervisor1'), {
             password: 'sup1password',
             role: 'supervisor',
             displayName: 'Supervisor Alpha'
@@ -216,7 +223,7 @@ loginForm.addEventListener('submit', async (e) => {
 
     if (userInDb && userInDb.password === password) {
         currentUser = { username: username, role: userInDb.role, displayName: userInDb.displayName || username };
-        window.localStorage.setItem('currentUser', JSON.stringify(currentUser)); // Save selected app user locally
+        localStorage.setItem('currentUser', JSON.stringify(currentUser)); // Save selected app user locally
         loginMessage.textContent = '';
         renderApp();
     } else {
@@ -226,8 +233,8 @@ loginForm.addEventListener('submit', async (e) => {
 
 logoutButton.addEventListener('click', async () => {
     currentUser = null;
-    window.localStorage.removeItem('currentUser'); // Clear selected app user
-    // No Firebase signOut here, as authentication is handled by Canvas environment
+    localStorage.removeItem('currentUser'); // Clear selected app user
+    // No Firebase signOut here, as authentication is handled by Canvas environment or anonymous sign-in
     loginContainer.style.display = 'block';
     appContainer.style.display = 'none';
 });
@@ -447,9 +454,9 @@ async function openStatusModal(employee, dateString, currentEntry, cell) {
         rejectBtn.parentNode.replaceChild(newRejectBtn, rejectBtn);
 
         newApproveBtn.addEventListener('click', async () => {
-            const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
+            const employeeRef = doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
             try {
-                await window.firebaseUpdateDoc(employeeRef, {
+                await updateDoc(employeeRef, {
                     [`calendar.${currentEditingDate}`]: currentEntry.requestedStatus
                 });
                 console.log("Request approved and status updated in Firestore.");
@@ -462,9 +469,9 @@ async function openStatusModal(employee, dateString, currentEntry, cell) {
         });
 
         newRejectBtn.addEventListener('click', async () => {
-            const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
+            const employeeRef = doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
             try {
-                await window.firebaseUpdateDoc(employeeRef, {
+                await updateDoc(employeeRef, {
                     [`calendar.${currentEditingDate}`]: 'working' // Revert to 'working'
                 });
                 console.log("Request rejected and status reverted in Firestore.");
@@ -511,11 +518,11 @@ saveStatusButton.addEventListener('click', async () => {
         return;
     }
 
-    const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
+    const employeeRef = doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
 
     try {
         if (currentUser.role === 'supervisor') {
-            await window.firebaseUpdateDoc(employeeRef, {
+            await updateDoc(employeeRef, {
                 [`calendar.${currentEditingDate}`]: {
                     status: 'pending',
                     requestedStatus: newStatus,
@@ -527,7 +534,7 @@ saveStatusButton.addEventListener('click', async () => {
 
         } else if (currentUser.role === 'admin') {
             // Admin makes a direct change (overriding any pending status)
-            await window.firebaseUpdateDoc(employeeRef, {
+            await updateDoc(employeeRef, {
                 [`calendar.${currentEditingDate}`]: newStatus
             });
             statusModal.style.display = 'none';
@@ -585,7 +592,7 @@ addEmployeeForm.addEventListener('submit', async (e) => {
 
     try {
         // Firestore automatically generates document ID if not provided
-        await window.firebaseSetDoc(window.firebaseDoc(window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`)), newEmployee);
+        await setDoc(doc(collection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`)), newEmployee);
         addEmployeeForm.reset();
         alert("Employee added successfully!");
     } catch (error) {
@@ -649,9 +656,9 @@ async function editEmployee(id) {
             return;
         }
 
-        const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, id);
+        const employeeRef = doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, id);
         try {
-            await window.firebaseUpdateDoc(employeeRef, {
+            await updateDoc(employeeRef, {
                 area: newArea,
                 techNumber: newTechNumber,
                 firstName: newFirstName,
@@ -673,9 +680,9 @@ async function deleteEmployee(id) {
     }
     // Use custom modal for confirm in real app, alert for demo
     if (confirm("Are you sure you want to delete this employee? This cannot be undone.")) {
-        const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, id);
+        const employeeRef = doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, id);
         try {
-            await window.firebaseDeleteDoc(employeeRef);
+            await deleteDoc(employeeRef);
             alert("Employee deleted successfully!");
         } catch (error) {
             console.error("Error deleting employee:", error);
@@ -723,7 +730,7 @@ addUserForm.addEventListener('submit', async (e) => {
     
     try {
         // Use username as the document ID for appUsers for easy lookup
-        await window.firebaseSetDoc(window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, newUsername), newUserDoc);
+        await setDoc(doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, newUsername), newUserDoc);
         addUserForm.reset();
         newSupervisorNameInput.value = '';
         userCreationMessage.textContent = `User '${newUsername}' (${newUserRole}) created successfully.`;
@@ -768,13 +775,13 @@ async function deleteUser(usernameToDelete) {
     const userToDeleteDisplayName = appUsers[usernameToDelete]?.displayName || usernameToDelete;
 
     // Check if any employees are linked to this supervisor's displayName
-    const q = window.firebaseQuery(
-        window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`),
-        window.firebaseWhere('supervisor', '==', userToDeleteDisplayName)
+    const q = query(
+        collection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`),
+        where('supervisor', '==', userToDeleteDisplayName)
     );
     
     try {
-        const querySnapshot = await window.firebaseGetDocs(q);
+        const querySnapshot = await getDocs(q);
         if (querySnapshot.size > 0) {
             alert(`Cannot delete user '${usernameToDelete}' because ${querySnapshot.size} employee(s) are still linked to '${userToDeleteDisplayName}'. Please reassign these employees first.`);
             return;
@@ -782,7 +789,7 @@ async function deleteUser(usernameToDelete) {
 
         // If no linked employees, proceed with deletion
         if (confirm(`Are you sure you want to delete user '${usernameToDelete}'? This cannot be undone.`)) {
-            await window.firebaseDeleteDoc(window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, usernameToDelete));
+            await deleteDoc(doc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, usernameToDelete));
             alert(`User '${usernameToDelete}' deleted.`);
         }
     } catch (error) {
@@ -890,13 +897,3 @@ function exportCalendarToExcel() {
     saveAs(new Blob([wbout], { type: 'application/octet-stream' }), 'employee_calendar.xlsx');
     alert("Calendar exported to Excel!");
 }
-
-
-// --- Initial Setup and Event Listeners (moved to be called after Firebase is ready) ---
-// The main initialization for app logic will now happen once Firebase authentication is confirmed.
-// The DOMContentLoaded listener in index.html will call window.onFirebaseReady, which in turn
-// sets up auth listeners and calls setupFirestoreListeners.
-// Initial calls to renderShiftsCalendar, etc., are managed by the Firestore listeners.
-
-// Ensure prompt listeners are set up for supervisor name visibility
-// The 'change' event listener is now inside DOMContentLoaded handler.
