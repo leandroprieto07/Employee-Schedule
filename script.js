@@ -325,7 +325,7 @@ function renderShiftsCalendar() {
             <td>${employee.techNumber}</td>
             <td>${employee.firstName}</td>
             <td>${employee.lastName}</td>
-            <td>${employee.supervisor || ''}</td>
+            <td>${employee.supervisor || ''}</td> <!-- This will now display the supervisor's Display Name -->
             <td>${employee.status || 'Working'}</td>
         `;
 
@@ -366,7 +366,7 @@ function renderShiftsCalendar() {
             cell.dataset.date = dateString;
             cell.dataset.employeeId = employee.id;
 
-            // Handle cell click for editing based on user role and supervisor link
+            // Handle cell click for editing based on user role and supervisor link (using displayName)
             if (currentUser) { // Ensure currentUser is not null
                 if (currentUser.role === 'admin' || 
                    (currentUser.role === 'supervisor' && employee.supervisor === currentUser.displayName)) {
@@ -547,7 +547,7 @@ saveStatusButton.addEventListener('click', async () => {
 
 addEmployeeForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (currentUser.role !== 'admin') {
+    if (!currentUser || currentUser.role !== 'admin') {
         alert("Only administrators can add employees.");
         return;
     }
@@ -563,12 +563,12 @@ addEmployeeForm.addEventListener('submit', async (e) => {
         user.role === 'supervisor' && user.displayName === supervisor
     );
 
-    if (!supervisorExists && supervisor !== '') {
+    if (!supervisorExists && supervisor !== '') { // Allow empty supervisor if needed
         alert("The linked Supervisor Display Name does not exist or is not a supervisor user. Please ensure the display name matches an existing supervisor user.");
         return;
     }
 
-    // Check if employee with this Tech # already exists in current `employees` array
+
     if (employees.some(emp => emp.techNumber === techNumber)) {
         alert("An employee with this Tech # already exists.");
         return;
@@ -584,6 +584,7 @@ addEmployeeForm.addEventListener('submit', async (e) => {
     };
 
     try {
+        // Firestore automatically generates document ID if not provided
         await window.firebaseSetDoc(window.firebaseDoc(window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`)), newEmployee);
         addEmployeeForm.reset();
         alert("Employee added successfully!");
@@ -602,7 +603,7 @@ function renderEmployeeList() {
             <td>${emp.techNumber}</td>
             <td>${emp.firstName}</td>
             <td>${emp.lastName}</td>
-            <td>${emp.supervisor || ''}</td>
+            <td>${emp.supervisor || ''}</td> <!-- Display supervisor's display name -->
             <td>
                 ${currentUser && currentUser.role === 'admin' ? `<button onclick="editEmployee('${emp.id}')">Edit</button>
                                                    <button onclick="deleteEmployee('${emp.id}')">Delete</button>` : ''}
@@ -639,7 +640,7 @@ async function editEmployee(id) {
 
         if (!supervisorExists && trimmedSupervisor !== '') {
             alert("The linked Supervisor Display Name does not exist or is not a supervisor user. Please enter an existing supervisor's display name.");
-            return;
+            return; // Stop editing if invalid supervisor
         }
 
         // Check if Tech # already exists for another employee (excluding the current one being edited)
@@ -716,6 +717,8 @@ addUserForm.addEventListener('submit', async (e) => {
 
     if (newUserRole === 'supervisor') {
         newUserDoc.displayName = newSupervisorDisplayName || newUsername;
+    } else {
+        delete newUserDoc.displayName; // Ensure displayName is not set for admin users
     }
     
     try {
