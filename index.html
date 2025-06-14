@@ -99,7 +99,7 @@
                     </table>
                 </section>
 
-                <!-- NEW: User Management Section -->
+                <!-- User Management Section -->
                 <section id="user-management-section">
                     <h2>User Management</h2>
                     <form id="add-user-form">
@@ -109,7 +109,7 @@
                         <label for="new-password">Password:</label>
                         <input type="password" id="new-password" required>
                         <label for="new-supervisor-name">Supervisor Display Name (for Supervisor role only):</label>
-                        <input type="text" id="new-supervisor-name"> <!-- This will store the supervisor's display name -->
+                        <input type="text" id="new-supervisor-name">
                         <label for="new-user-role">Role:</label>
                         <select id="new-user-role">
                             <option value="supervisor">Supervisor</option>
@@ -144,7 +144,7 @@
                     <p>Employee: <span id="modal-employee-name"></span></p>
                     <p>Date: <span id="modal-date"></span></p>
                     
-                    <div id="status-select-container"> <!-- Container for the select dropdown -->
+                    <div id="status-select-container">
                         <label for="status-select">Status:</label>
                         <select id="status-select">
                             <option value="working">Working</option>
@@ -154,7 +154,7 @@
                         </select>
                     </div>
 
-                    <div id="admin-actions-container"></div> <!-- Container for Admin approval/rejection buttons -->
+                    <div id="admin-actions-container"></div>
                     
                     <button id="save-status-button">Save</button>
                 </div>
@@ -163,10 +163,46 @@
         </main>
     </div>
 
-    <!-- External JavaScript libraries. Crucial to load BEFORE your script.js -->
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase objects globally for script.js to access
+        window.firebaseApp = initializeApp(JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}'));
+        window.firebaseAuth = getAuth(window.firebaseApp);
+        window.firebaseDb = getFirestore(window.firebaseApp);
+        window.firebaseOnAuthStateChanged = onAuthStateChanged;
+        window.firebaseSignInAnonymously = signInAnonymously;
+        window.firebaseSignInWithCustomToken = signInWithCustomToken;
+        window.firebaseSignOut = signOut;
+        window.firebaseCollection = collection;
+        window.firebaseDoc = doc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseUpdateDoc = updateDoc;
+        window.firebaseDeleteDoc = deleteDoc;
+        window.firebaseOnSnapshot = onSnapshot;
+        window.firebaseQuery = query;
+        window.firebaseWhere = where;
+        window.firebaseGetDocs = getDocs;
+
+        // Pass __app_id to window scope
+        window.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        window.initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // A small delay to ensure global variables are set before script.js runs
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.onFirebaseReady) {
+                window.onFirebaseReady();
+            }
+        });
+    </script>
+
+    <!-- External JavaScript libraries -->
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-    <!-- Your script.js MUST go at the end of the body to ensure all HTML elements are loaded -->
+    <!-- Your script.js DEBE go at the end of the body to ensure all HTML elements are loaded -->
     <script src="script.js"></script>
 
 </body>
