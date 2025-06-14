@@ -6,13 +6,13 @@ import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot
 // --- Configuración de Firebase (TU PROPIA CLAVE API REAL AQUÍ) ---
 // Obtén esta configuración de tu consola de Firebase -> Configuración del proyecto -> Tus apps -> Configuración de la aplicación web.
 const firebaseConfig = {
-    apiKey: "AIzaSyBprhcmGH__eh7EpnvIBwiTZ6al_rFEsZY", // ¡Esta es tu clave API real que has proporcionado!
-    authDomain: "calendar-2a50b.firebaseapp.com",
-    projectId: "calendar-2a50b",
-    storageBucket: "calendar-2a50b.firebasestorage.app",
-    messagingSenderId: "483234057880",
-    appId: "1:483234057880:web:14c837286907a722a18aed",
-    measurementId: "G-6QC4763Z91"
+    apiKey: "AIzaSyBiVrJhTmu8iK5vaC7l2ZJRzS-LFKND35Y",
+  authDomain: "schedule-58df7.firebaseapp.com",
+  projectId: "schedule-58df7",
+  storageBucket: "schedule-58df7.firebasestorage.app",
+  messagingSenderId: "890281566780",
+  appId: "1:890281566780:web:5d194f3b8009555a479939",
+  measurementId: "G-MJG67CRM6H"
 };
 
 // --- Inicialización de Firebase ---
