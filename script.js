@@ -6,15 +6,13 @@ import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot
 // --- Configuración de Firebase (TU PROPIA CLAVE API REAL AQUÍ) ---
 // Obtén esta configuración de tu consola de Firebase -> Configuración del proyecto -> Tus apps -> Configuración de la aplicación web.
 const firebaseConfig = {
-    // IMPORTANTE: REEMPLAZA ESTE VALOR CON TU CLAVE API REAL DE FIREBASE.
-    // La que empieza con "AIzaSy..." y que encontrarás en la configuración de tu proyecto web en Firebase.
-    apiKey: "AIzaSyC3u4FV6h1dzqQuWo2U8F7SxCe2AxoiG5M", 
-    authDomain: "employee-shift-calendar-81868.firebaseapp.com",
-    projectId: "employee-shift-calendar-81868",
-    storageBucket: "employee-shift-calendar-81868.firebasestorage.app",
-    messagingSenderId: "1000655634680",
-    appId: "1:1000655634680:web:de80fa37b44bd9272efb0d",
-    measurementId: "G-2NXDB1ZC41"
+    apiKey: "AIzaSyBprhcmGH__eh7EpnvIBwiTZ6al_rFEsZY", // ¡Esta es tu clave API real que has proporcionado!
+    authDomain: "calendar-2a50b.firebaseapp.com",
+    projectId: "calendar-2a50b",
+    storageBucket: "calendar-2a50b.firebasestorage.app",
+    messagingSenderId: "483234057880",
+    appId: "1:483234057880:web:14c837286907a722a18aed",
+    measurementId: "G-6QC4763Z91"
 };
 
 // --- Inicialización de Firebase ---
@@ -60,7 +58,7 @@ const addEmployeeForm = document.getElementById('add-employee-form');
 const employeeListBody = document.getElementById('employee-list-body');
 
 const userManagementSection = document.getElementById('user-management-section');
-const addUserForm = document.getElementById('add-user-form');
+const addUserForm = document = document.getElementById('add-user-form');
 const newUsernameInput = document.getElementById('new-username');
 const newPasswordInput = document.getElementById('new-password');
 const newSupervisorNameInput = document.getElementById('new-supervisor-name');
