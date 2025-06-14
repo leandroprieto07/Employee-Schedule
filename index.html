@@ -163,69 +163,11 @@
         </main>
     </div>
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // HARDCODED Firebase config directly as provided by the user to ensure initialization
-        // This bypasses potential issues with environment variable injection from window.parent
-        const firebaseConfig = {
-          apiKey: "AIzaSyC3u4FV6h1dzqQuWo2U8F7SxCe2AxoiG5M", // Replace with YOUR actual Firebase API Key
-          authDomain: "employee-shift-calendar-81868.firebaseapp.com",
-          projectId: "employee-shift-calendar-81868",
-          storageBucket: "employee-shift-calendar-81868.firebasestorage.app",
-          messagingSenderId: "1000655634680",
-          appId: "1:1000655634680:web:de80fa37b44bd9272efb0d",
-          measurementId: "G-2NXDB1ZC41"
-        };
-        
-        // Using projectId as appId for consistency in Firestore paths
-        const appId = firebaseConfig.projectId; 
-        // We will rely on anonymous sign-in or your app's login form.
-        // The initialAuthToken from the environment won't be used here.
-        const initialAuthToken = null; 
-
-        // Initialize Firebase app with the hardcoded config
-        const app = initializeApp(firebaseConfig);
-        
-        // Expose Firebase objects globally for script.js to access
-        window.firebaseApp = app;
-        window.firebaseAuth = getAuth(app);
-        window.firebaseDb = getFirestore(app);
-        window.firebaseOnAuthStateChanged = onAuthStateChanged;
-        window.firebaseSignInAnonymously = signInAnonymously;
-        window.firebaseSignInWithCustomToken = signInWithCustomToken;
-        window.firebaseSignOut = signOut;
-        window.firebaseCollection = collection;
-        window.firebaseDoc = doc;
-        window.firebaseSetDoc = setDoc;
-        window.firebaseUpdateDoc = updateDoc;
-        window.firebaseDeleteDoc = deleteDoc;
-        window.firebaseOnSnapshot = onSnapshot;
-        window.firebaseQuery = query;
-        window.firebaseWhere = where;
-        window.firebaseGetDocs = getDocs;
-
-        // Pass appId and initialAuthToken to window scope for script.js
-        window.appId = appId;
-        window.initialAuthToken = initialAuthToken; 
-
-        // Ensure global variables are set before script.js runs.
-        // This DOMContentLoaded listener ensures onFirebaseReady is called after DOM is loaded.
-        document.addEventListener('DOMContentLoaded', () => {
-            if (window.onFirebaseReady) {
-                window.onFirebaseReady();
-            }
-        });
-    </script>
-
     <!-- External JavaScript libraries -->
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-    <!-- Your script.js MUST go at the end of the body to ensure all HTML elements are loaded -->
-    <script src="script.js"></script>
+    <!-- Your script.js MUST go at the end of the body -->
+    <script type="module" src="script.js"></script>
 
 </body>
 </html>
