@@ -165,14 +165,23 @@
 
     <!-- Firebase SDKs -->
     <script type="module">
+        // Import Firebase modules directly
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
+        // Use window.parent to access Canvas environment variables
+        const firebaseConfig = JSON.parse(typeof window.parent.__firebase_config !== 'undefined' ? window.parent.__firebase_config : '{}');
+        const appId = typeof window.parent.__app_id !== 'undefined' ? window.parent.__app_id : 'default-app-id';
+        const initialAuthToken = typeof window.parent.__initial_auth_token !== 'undefined' ? window.parent.__initial_auth_token : null;
+
+        // Initialize Firebase app with the provided config
+        const app = initializeApp(firebaseConfig);
+        
         // Expose Firebase objects globally for script.js to access
-        window.firebaseApp = initializeApp(JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}'));
-        window.firebaseAuth = getAuth(window.firebaseApp);
-        window.firebaseDb = getFirestore(window.firebaseApp);
+        window.firebaseApp = app;
+        window.firebaseAuth = getAuth(app);
+        window.firebaseDb = getFirestore(app);
         window.firebaseOnAuthStateChanged = onAuthStateChanged;
         window.firebaseSignInAnonymously = signInAnonymously;
         window.firebaseSignInWithCustomToken = signInWithCustomToken;
@@ -187,11 +196,12 @@
         window.firebaseWhere = where;
         window.firebaseGetDocs = getDocs;
 
-        // Pass __app_id to window scope
-        window.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        window.initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // Pass appId and initialAuthToken to window scope for script.js
+        window.appId = appId;
+        window.initialAuthToken = initialAuthToken;
 
         // A small delay to ensure global variables are set before script.js runs
+        // This pattern might be needed if script.js is loaded synchronously
         document.addEventListener('DOMContentLoaded', () => {
             if (window.onFirebaseReady) {
                 window.onFirebaseReady();
@@ -202,7 +212,7 @@
     <!-- External JavaScript libraries -->
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-    <!-- Your script.js DEBE go at the end of the body to ensure all HTML elements are loaded -->
+    <!-- Your script.js MUST go at the end of the body to ensure all HTML elements are loaded -->
     <script src="script.js"></script>
 
 </body>
