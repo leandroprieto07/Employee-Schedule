@@ -165,17 +165,29 @@
 
     <!-- Firebase SDKs -->
     <script type="module">
-        // Import Firebase modules directly
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Use window.parent to access Canvas environment variables
-        const firebaseConfig = JSON.parse(typeof window.parent.__firebase_config !== 'undefined' ? window.parent.__firebase_config : '{}');
-        const appId = typeof window.parent.__app_id !== 'undefined' ? window.parent.__app_id : 'default-app-id';
-        const initialAuthToken = typeof window.parent.__initial_auth_token !== 'undefined' ? window.parent.__initial_auth_token : null;
+        // HARDCODED Firebase config directly as provided by the user to ensure initialization
+        // This bypasses potential issues with environment variable injection from window.parent
+        const firebaseConfig = {
+          apiKey: "AIzaSyC3u4FV6h1dzqQuQuWo2U8F7SxCe2AxoiG5M", // Replace with YOUR actual Firebase API Key
+          authDomain: "employee-shift-calendar-81868.firebaseapp.com",
+          projectId: "employee-shift-calendar-81868",
+          storageBucket: "employee-shift-calendar-81868.firebasestorage.app",
+          messagingSenderId: "1000655634680",
+          appId: "1:1000655634680:web:de80fa37b44bd9272efb0d",
+          measurementId: "G-2NXDB1ZC41"
+        };
+        
+        // Using projectId as appId for consistency in Firestore paths
+        const appId = firebaseConfig.projectId; 
+        // We will rely on anonymous sign-in or your app's login form.
+        // The initialAuthToken from the environment won't be used here.
+        const initialAuthToken = null; 
 
-        // Initialize Firebase app with the provided config
+        // Initialize Firebase app with the hardcoded config
         const app = initializeApp(firebaseConfig);
         
         // Expose Firebase objects globally for script.js to access
@@ -198,10 +210,10 @@
 
         // Pass appId and initialAuthToken to window scope for script.js
         window.appId = appId;
-        window.initialAuthToken = initialAuthToken;
+        window.initialAuthToken = initialAuthToken; 
 
-        // A small delay to ensure global variables are set before script.js runs
-        // This pattern might be needed if script.js is loaded synchronously
+        // Ensure global variables are set before script.js runs.
+        // This DOMContentLoaded listener ensures onFirebaseReady is called after DOM is loaded.
         document.addEventListener('DOMContentLoaded', () => {
             if (window.onFirebaseReady) {
                 window.onFirebaseReady();
