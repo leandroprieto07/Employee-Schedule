@@ -1,18 +1,22 @@
-// --- Simulation Data (NOT SECURE FOR PRODUCTION!) ---
-// Defines users and their roles for the login system.
-// IMPORTANT: 'users' is now a 'let' variable and is persisted in localStorage.
-// The initial users are only used if localStorage is empty.
-let users = JSON.parse(localStorage.getItem('users')) || {
-    'admin': { password: 'adminpassword', role: 'admin' },
-    'supervisor1': { password: 'sup1password', role: 'supervisor', displayName: 'Supervisor Alpha' } // Added displayName for default supervisor
-};
-// FOR DEBUGGING: Log the loaded users to the console
-console.log('Loaded Users:', users);
+// Global Firebase variables will be exposed via the <script type="module"> in index.html
+// e.g., window.firebaseApp, window.firebaseAuth, window.firebaseDb, etc.
 
-// Load data from localStorage or initialize as empty
-let currentUser = JSON.parse(localStorage.getItem('currentUser')) || null;
-let employees = JSON.parse(localStorage.getItem('employees')) || [];
-let calendarData = JSON.parse(localStorage.getItem('calendarData')) || {};
+// Firestore path constants for clarity and easy modification
+// Data stored under /artifacts/{appId}/public/data/ for shared access
+let appId; // Will be set from window.appId
+let db;    // Will be set from window.firebaseDb
+let auth;  // Will be set from window.firebaseAuth
+
+const COLLECTIONS = {
+    APP_USERS: 'appUsers',    // Stores user login details (username, password, role, displayName)
+    EMPLOYEES: 'employees'    // Stores employee data and their calendar shifts
+};
+
+// --- Application State Variables ---
+let currentUser = null; // Currently logged-in app user (not Firebase Auth user)
+let employees = [];     // Array of employee objects, populated from Firestore
+let appUsers = {};      // Map of app users (username -> {password, role, displayName}), populated from Firestore
+let firebaseUserId = null; // The actual Firebase Authentication UID
 
 // --- DOM Elements ---
 const loginContainer = document.getElementById('login-container');
@@ -30,21 +34,19 @@ const prevWeekButton = document.getElementById('prev-week');
 const nextWeekButton = document.getElementById('next-week');
 const exportExcelButton = document.getElementById('export-excel-button');
 
-const adminMainSection = document.getElementById('admin-main-section'); // New: Container for all admin sections
+const adminMainSection = document.getElementById('admin-main-section');
 const employeeManagementSection = document.getElementById('employee-management-section');
 const addEmployeeForm = document.getElementById('add-employee-form');
 const employeeListBody = document.getElementById('employee-list-body');
 
-// NEW: User Management DOM Elements
 const userManagementSection = document.getElementById('user-management-section');
 const addUserForm = document.getElementById('add-user-form');
 const newUsernameInput = document.getElementById('new-username');
 const newPasswordInput = document.getElementById('new-password');
-const newSupervisorNameInput = document.getElementById('new-supervisor-name'); // This will store the supervisor's display name
+const newSupervisorNameInput = document.getElementById('new-supervisor-name');
 const newUserRoleSelect = document.getElementById('new-user-role');
 const userCreationMessage = document.getElementById('user-creation-message');
 const userListBody = document.getElementById('user-list-body');
-
 
 const statusModal = document.getElementById('status-modal');
 const modalEmployeeName = document.getElementById('modal-employee-name');
@@ -53,11 +55,11 @@ const statusSelect = document.getElementById('status-select');
 const saveStatusButton = document.getElementById('save-status-button');
 const closeButton = statusModal.querySelector('.close-button');
 
-// --- Calendar State Variables ---
-let startDate = new Date(); // Initialized with current date
-const DISPLAY_DAYS = 14; // Number of days to display
+// --- Calendar Display Variables ---
+let startDate = new Date();
+const DISPLAY_DAYS = 14;
 
-// Variables for the editing modal
+// Modal editing state
 let currentEditingEmployeeId = null;
 let currentEditingDate = null;
 let currentEditingCell = null;
@@ -65,55 +67,156 @@ let currentEditingCell = null;
 
 // --- Utility Functions ---
 
-/**
- * Formats a Date object into a `YYYY-MM-DD` string.
- * @param {Date} date - The Date object to format.
- * @returns {string} The formatted date (e.g., "2023-01-15").
- */
 function formatDateYYYYMMDD(date) {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+    const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 }
 
-/**
- * Formats a `YYYY-MM-DD` date string to MM/DD/YYYY.
- * @param {string} dateStringYYYYMMDD - The date in `YYYY-MM-DD` format.
- * @returns {string} The formatted date (e.g., "01/15/2023").
- */
 function formatDateMMDDYYYY(dateStringYYYYMMDD) {
     const [year, month, day] = dateStringYYYYMMDD.split('-');
     return `${month}/${day}/${year}`;
 }
 
-/**
- * Checks if a given date is a weekend (Saturday or Sunday).
- * @param {Date} date - The Date object to check.
- * @returns {boolean} True if it's a weekend, false otherwise.
- */
 function isWeekend(date) {
     const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
     return dayOfWeek === 0 || dayOfWeek === 6;
 }
 
-// --- Login/Logout Functions ---
 
-loginForm.addEventListener('submit', (e) => {
-    e.preventDefault(); // Prevents page reload on form submission.
+// --- Firebase Initialization and Authentication Management ---
+
+// This function will be called by the DOMContentLoaded listener in index.html
+window.onFirebaseReady = async () => {
+    appId = window.appId;
+    auth = window.firebaseAuth;
+    db = window.firebaseDb;
+
+    window.firebaseOnAuthStateChanged(auth, async (user) => {
+        if (user) {
+            firebaseUserId = user.uid;
+            console.log("Firebase Authenticated User ID:", firebaseUserId);
+            // Setup Firestore listeners once authenticated
+            setupFirestoreListeners();
+            // Try to log in with previously saved currentUser from localStorage
+            // or default to login form if no user selected yet
+            if (window.localStorage.getItem('currentUser')) {
+                 // If there's a stored currentUser, try to re-render with it
+                 currentUser = JSON.parse(window.localStorage.getItem('currentUser'));
+                 // Ensure displayName is updated from appUsers for current session
+                 if (currentUser.role === 'supervisor' && appUsers[currentUser.username] && appUsers[currentUser.username].displayName) {
+                    currentUser.displayName = appUsers[currentUser.username].displayName;
+                 } else if (currentUser.role === 'supervisor') {
+                    currentUser.displayName = currentUser.username;
+                 }
+                 renderApp();
+            } else {
+                // If no user was previously selected, show the login form
+                loginContainer.style.display = 'block';
+                appContainer.style.display = 'none';
+            }
+        } else {
+            // No Firebase user authenticated, try to sign in
+            try {
+                if (window.initialAuthToken) {
+                    await window.firebaseSignInWithCustomToken(auth, window.initialAuthToken);
+                } else {
+                    await window.firebaseSignInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Firebase Auth error:", error);
+                loginMessage.textContent = "Authentication error. Please refresh.";
+                loginContainer.style.display = 'block';
+                appContainer.style.display = 'none';
+            }
+        }
+    });
+};
+
+
+// --- Firestore Data Listeners ---
+
+function setupFirestoreListeners() {
+    if (!db || !appId || !firebaseUserId) {
+        console.warn("Firestore not initialized or user not authenticated for listeners.");
+        return;
+    }
+
+    // Listener for App Users
+    window.firebaseOnSnapshot(window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`), (snapshot) => {
+        const fetchedUsers = {};
+        snapshot.forEach(doc => {
+            fetchedUsers[doc.id] = doc.data();
+        });
+        appUsers = fetchedUsers;
+        console.log("Fetched App Users:", appUsers);
+
+        // If appUsers are empty, create default admin/supervisor
+        if (Object.keys(appUsers).length === 0) {
+            console.log("No app users found. Creating default users...");
+            createDefaultAppUsers();
+        }
+
+        // Re-render user list and potentially re-authenticate current user's role if appUsers updated
+        if (currentUser && appUsers[currentUser.username]) {
+            currentUser.role = appUsers[currentUser.username].role;
+            currentUser.displayName = appUsers[currentUser.username].displayName || currentUser.username;
+            window.localStorage.setItem('currentUser', JSON.stringify(currentUser)); // Update local storage
+        }
+        renderUserList(); // Ensure user list is up-to-date
+        renderApp(); // Re-render app to update UI based on new user roles/permissions
+    }, (error) => {
+        console.error("Error fetching app users:", error);
+    });
+
+    // Listener for Employees (and their calendar data)
+    window.firebaseOnSnapshot(window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`), (snapshot) => {
+        employees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        console.log("Fetched Employees:", employees);
+        renderEmployeeList(); // Re-render employee list
+        renderShiftsCalendar(); // Re-render calendar
+    }, (error) => {
+        console.error("Error fetching employees:", error);
+    });
+}
+
+// Function to create default admin and supervisor users in Firestore
+async function createDefaultAppUsers() {
+    if (!db) {
+        console.error("Firestore DB not initialized.");
+        return;
+    }
+    try {
+        await window.firebaseSetDoc(window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, 'admin'), {
+            password: 'adminpassword',
+            role: 'admin',
+            displayName: 'Admin User'
+        });
+        await window.firebaseSetDoc(window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, 'supervisor1'), {
+            password: 'sup1password',
+            role: 'supervisor',
+            displayName: 'Supervisor Alpha'
+        });
+        console.log("Default users created in Firestore.");
+    } catch (error) {
+        console.error("Error creating default users in Firestore:", error);
+    }
+}
+
+
+// --- Login/Logout Functions (now linked to appUsers from Firestore) ---
+
+loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
 
-    if (users[username] && users[username].password === password) {
-        currentUser = { username: username, role: users[username].role };
-        // If the logged-in user is a supervisor, get their display name
-        if (currentUser.role === 'supervisor' && users[username].displayName) {
-            currentUser.displayName = users[username].displayName;
-        } else if (currentUser.role === 'supervisor') {
-             // Fallback: if a supervisor user doesn't have a displayName explicitly set, use their username
-            currentUser.displayName = username;
-        }
-        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    const userInDb = appUsers[username]; // Check against Firestore-loaded appUsers
+
+    if (userInDb && userInDb.password === password) {
+        currentUser = { username: username, role: userInDb.role, displayName: userInDb.displayName || username };
+        window.localStorage.setItem('currentUser', JSON.stringify(currentUser)); // Save selected app user locally
         loginMessage.textContent = '';
         renderApp();
     } else {
@@ -121,58 +224,44 @@ loginForm.addEventListener('submit', (e) => {
     }
 });
 
-logoutButton.addEventListener('click', () => {
-    currentUser = null; // Clears the current user.
-    localStorage.removeItem('currentUser'); // Removes the user from localStorage.
-    loginContainer.style.display = 'block'; // Shows the login container.
-    appContainer.style.display = 'none'; // Hides the application container.
+logoutButton.addEventListener('click', async () => {
+    currentUser = null;
+    window.localStorage.removeItem('currentUser'); // Clear selected app user
+    // No Firebase signOut here, as authentication is handled by Canvas environment
+    loginContainer.style.display = 'block';
+    appContainer.style.display = 'none';
 });
 
-/**
- * Checks authentication status when the page loads.
- * If a user is found in localStorage, it logs them in automatically.
- */
-function checkAuth() {
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-        currentUser = JSON.parse(storedUser);
-        // Ensure displayName is set for currentUser if it's a supervisor during initial load
-        if (currentUser.role === 'supervisor' && users[currentUser.username] && users[currentUser.username].displayName) {
-            currentUser.displayName = users[currentUser.username].displayName;
-        } else if (currentUser.role === 'supervisor') {
-            currentUser.displayName = currentUser.username; // Default to username if no displayName set
-        }
-        renderApp();
-    } else {
-        loginContainer.style.display = 'block'; // Otherwise, show the login.
-        appContainer.style.display = 'none';
-    }
-}
 
 /**
  * Renders the main application interface after a successful login.
  * Shows/hides sections based on the user's role.
  */
 function renderApp() {
-    loginContainer.style.display = 'none'; // Hides the login form.
-    appContainer.style.display = 'block'; // Shows the application interface.
-    // Display supervisor's display name if available, otherwise username
+    if (!currentUser) { // If no app user is selected yet
+        loginContainer.style.display = 'block';
+        appContainer.style.display = 'none';
+        return;
+    }
+
+    loginContainer.style.display = 'none';
+    appContainer.style.display = 'block';
     const displayUserName = currentUser.role === 'supervisor' && currentUser.displayName ? currentUser.displayName : currentUser.username;
     userInfoSpan.textContent = `Welcome, ${displayUserName} (${currentUser.role})`;
 
     if (currentUser.role === 'admin') {
-        adminMainSection.style.display = 'block'; // Show the entire admin section
+        adminMainSection.style.display = 'block';
         employeeManagementSection.style.display = 'block';
         userManagementSection.style.display = 'block';
     } else {
-        adminMainSection.style.display = 'none'; // Hide the entire admin section
+        adminMainSection.style.display = 'none';
         employeeManagementSection.style.display = 'none';
         userManagementSection.style.display = 'none';
     }
 
     renderShiftsCalendar();
     renderEmployeeList();
-    renderUserList(); // Render user list on app load/login
+    renderUserList();
 }
 
 // --- Horizontal Shift Calendar Functions ---
@@ -182,16 +271,14 @@ function renderApp() {
  * Dynamically generates date headers and employee rows.
  */
 function renderShiftsCalendar() {
-    // Clear date headers and table body before rendering.
     dateHeaderRow.innerHTML = '';
     shiftsTableBody.innerHTML = '';
 
     // Adjust startDate to be the beginning of the week (Sunday)
-    // Create a mutable copy of startDate for calculation
     const displayStartDate = new Date(startDate); 
-    displayStartDate.setDate(displayStartDate.getDate() - displayStartDate.getDay()); // Set to Sunday of the current week
+    displayStartDate.setDate(displayStartDate.getDate() - displayStartDate.getDay());
 
-    const currentDay = new Date(displayStartDate); // Use this adjusted date for rendering
+    const currentDay = new Date(displayStartDate);
     const today = new Date();
     today.setHours(0,0,0,0);
     
@@ -238,12 +325,13 @@ function renderShiftsCalendar() {
             <td>${employee.techNumber}</td>
             <td>${employee.firstName}</td>
             <td>${employee.lastName}</td>
-            <td>${employee.supervisor || ''}</td> <!-- This will now display the supervisor's Display Name -->
+            <td>${employee.supervisor || ''}</td>
             <td>${employee.status || 'Working'}</td>
         `;
 
-        const employeeCalendar = calendarData[employee.id] || {};
-        // Use the adjusted displayStartDate for employee rows too
+        // Employee's calendar data is now part of the employee document in Firestore
+        // Use employee.calendar map, defaulting to empty object if not exists
+        const employeeCalendar = employee.calendar || {}; 
         const tempDate = new Date(displayStartDate); 
 
         for (let i = 0; i < DISPLAY_DAYS; i++) {
@@ -278,10 +366,10 @@ function renderShiftsCalendar() {
             cell.dataset.date = dateString;
             cell.dataset.employeeId = employee.id;
 
-            // Handle cell click for editing based on user role and supervisor link (using displayName)
-            if (currentUser) {
+            // Handle cell click for editing based on user role and supervisor link
+            if (currentUser) { // Ensure currentUser is not null
                 if (currentUser.role === 'admin' || 
-                   (currentUser.role === 'supervisor' && employee.supervisor === currentUser.displayName)) { // Use displayName for linkage check
+                   (currentUser.role === 'supervisor' && employee.supervisor === currentUser.displayName)) {
                     cell.addEventListener('click', () => openStatusModal(employee, dateString, entry, cell));
                 } else if (currentUser.role === 'supervisor' && employee.supervisor !== currentUser.displayName) {
                     cell.style.cursor = 'not-allowed';
@@ -298,13 +386,11 @@ function renderShiftsCalendar() {
 
 // --- Calendar Navigation ---
 
-// Navigate to the previous `DISPLAY_DAYS` block, adjusting to the nearest Sunday start
 prevWeekButton.addEventListener('click', () => {
     startDate.setDate(startDate.getDate() - DISPLAY_DAYS);
     renderShiftsCalendar();
 });
 
-// Navigate to the next `DISPLAY_DAYS` block, adjusting to the nearest Sunday start
 nextWeekButton.addEventListener('click', () => {
     startDate.setDate(startDate.getDate() + DISPLAY_DAYS);
     renderShiftsCalendar();
@@ -312,7 +398,11 @@ nextWeekButton.addEventListener('click', () => {
 
 // --- Day Status Modal ---
 
-function openStatusModal(employee, dateString, currentEntry, cell) {
+async function openStatusModal(employee, dateString, currentEntry, cell) {
+    if (!currentUser) { // Ensure user is logged into the app before opening modal
+        alert("Please log in to manage shifts.");
+        return;
+    }
     // Basic permission check (using displayName)
     if (currentUser.role === 'supervisor' && employee.supervisor !== currentUser.displayName) {
         alert("You can only manage shifts for your assigned employees.");
@@ -346,21 +436,44 @@ function openStatusModal(employee, dateString, currentEntry, cell) {
             <button id="reject-request-button" style="background-color: #dc3545;">Reject</button>
         `;
         
-        document.getElementById('approve-request-button').addEventListener('click', () => {
-            if (!calendarData[currentEditingEmployeeId]) calendarData[currentEditingEmployeeId] = {};
-            calendarData[currentEditingEmployeeId][currentEditingDate] = currentEntry.requestedStatus;
-            localStorage.setItem('calendarData', JSON.stringify(calendarData));
-            renderShiftsCalendar();
-            statusModal.style.display = 'none';
-            alert("Request approved.");
+        // Remove previous event listeners to prevent duplicates
+        const approveBtn = document.getElementById('approve-request-button');
+        const rejectBtn = document.getElementById('reject-request-button');
+        
+        // Clone and replace to remove old event listeners
+        const newApproveBtn = approveBtn.cloneNode(true);
+        const newRejectBtn = rejectBtn.cloneNode(true);
+        approveBtn.parentNode.replaceChild(newApproveBtn, approveBtn);
+        rejectBtn.parentNode.replaceChild(newRejectBtn, rejectBtn);
+
+        newApproveBtn.addEventListener('click', async () => {
+            const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
+            try {
+                await window.firebaseUpdateDoc(employeeRef, {
+                    [`calendar.${currentEditingDate}`]: currentEntry.requestedStatus
+                });
+                console.log("Request approved and status updated in Firestore.");
+                statusModal.style.display = 'none';
+                alert("Request approved.");
+            } catch (error) {
+                console.error("Error approving request:", error);
+                alert("Error approving request. Check console.");
+            }
         });
-        document.getElementById('reject-request-button').addEventListener('click', () => {
-            if (!calendarData[currentEditingEmployeeId]) calendarData[currentEditingEmployeeId] = {};
-            calendarData[currentEditingEmployeeId][currentEditingDate] = 'working'; 
-            localStorage.setItem('calendarData', JSON.stringify(calendarData));
-            renderShiftsCalendar();
-            statusModal.style.display = 'none';
-            alert("Request rejected.");
+
+        newRejectBtn.addEventListener('click', async () => {
+            const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
+            try {
+                await window.firebaseUpdateDoc(employeeRef, {
+                    [`calendar.${currentEditingDate}`]: 'working' // Revert to 'working'
+                });
+                console.log("Request rejected and status reverted in Firestore.");
+                statusModal.style.display = 'none';
+                alert("Request rejected.");
+            } catch (error) {
+                console.error("Error rejecting request:", error);
+                alert("Error rejecting request. Check console.");
+            }
         });
 
     } else {
@@ -382,10 +495,14 @@ window.addEventListener('click', (event) => {
     }
 });
 
-saveStatusButton.addEventListener('click', () => {
+saveStatusButton.addEventListener('click', async () => {
     const newStatus = statusSelect.value;
-    const currentEntry = calendarData[currentEditingEmployeeId] ? calendarData[currentEditingEmployeeId][currentEditingDate] : null;
     const employeeToEdit = employees.find(emp => emp.id === currentEditingEmployeeId);
+
+    if (!employeeToEdit) {
+        alert("Employee not found.");
+        return;
+    }
 
     // Re-check supervisor linkage for robustness (using displayName)
     if (currentUser.role === 'supervisor' && employeeToEdit.supervisor !== currentUser.displayName) {
@@ -394,48 +511,41 @@ saveStatusButton.addEventListener('click', () => {
         return;
     }
 
-    if (currentUser.role === 'supervisor') {
-        if (!calendarData[currentEditingEmployeeId]) calendarData[currentEditingEmployeeId] = {};
-        calendarData[currentEditingEmployeeId][currentEditingDate] = {
-            status: 'pending',
-            requestedStatus: newStatus,
-            requestedBy: currentUser.displayName, // Store supervisor's display name
-        };
-        localStorage.setItem('calendarData', JSON.stringify(calendarData));
-        statusModal.style.display = 'none';
-        alert(`Request for ${newStatus.toUpperCase()} sent for approval.`);
-        renderShiftsCalendar();
+    const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, currentEditingEmployeeId);
 
-    } else if (currentUser.role === 'admin') {
-        if (currentEntry && typeof currentEntry === 'object' && currentEntry.status === 'pending') {
-            if (confirm(`ADMIN: Do you want to apply ${newStatus.toUpperCase()} directly (overriding pending)?`)) {
-                if (!calendarData[currentEditingEmployeeId]) calendarData[currentEditingEmployeeId] = {};
-                calendarData[currentEditingEmployeeId][currentEditingDate] = newStatus;
-                localStorage.setItem('calendarData', JSON.stringify(calendarData));
-                statusModal.style.display = 'none';
-                alert("Status updated directly by Admin.");
-                renderShiftsCalendar();
-            } else {
-                statusModal.style.display = 'none';
-            }
-        } else {
-            if (!calendarData[currentEditingEmployeeId]) calendarData[currentEditingEmployeeId] = {};
-            calendarData[currentEditingEmployeeId][currentEditingDate] = newStatus;
-            localStorage.setItem('calendarData', JSON.stringify(calendarData));
+    try {
+        if (currentUser.role === 'supervisor') {
+            await window.firebaseUpdateDoc(employeeRef, {
+                [`calendar.${currentEditingDate}`]: {
+                    status: 'pending',
+                    requestedStatus: newStatus,
+                    requestedBy: currentUser.displayName,
+                }
+            });
+            statusModal.style.display = 'none';
+            alert(`Request for ${newStatus.toUpperCase()} sent for approval.`);
+
+        } else if (currentUser.role === 'admin') {
+            // Admin makes a direct change (overriding any pending status)
+            await window.firebaseUpdateDoc(employeeRef, {
+                [`calendar.${currentEditingDate}`]: newStatus
+            });
             statusModal.style.display = 'none';
             alert("Status updated directly by Admin.");
-            renderShiftsCalendar();
+        } else {
+            alert("You do not have permissions to modify the status.");
+            statusModal.style.display = 'none';
         }
-    } else {
-        alert("You do not have permissions to modify the status.");
-        statusModal.style.display = 'none';
+    } catch (error) {
+        console.error("Error updating status:", error);
+        alert("Error updating status. Check console.");
     }
 });
 
 
 // --- Employee Management Functions (Admin) ---
 
-addEmployeeForm.addEventListener('submit', (e) => {
+addEmployeeForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (currentUser.role !== 'admin') {
         alert("Only administrators can add employees.");
@@ -446,38 +556,41 @@ addEmployeeForm.addEventListener('submit', (e) => {
     const techNumber = document.getElementById('employee-tech-number').value;
     const firstName = document.getElementById('employee-first-name').value;
     const lastName = document.getElementById('employee-last-name').value;
-    const supervisor = document.getElementById('employee-supervisor').value; // Supervisor's DISPLAY name
+    const supervisor = document.getElementById('employee-supervisor').value.trim(); // Supervisor's DISPLAY name
 
     // Validate that the entered supervisor display name exists as a supervisor
-    const supervisorExists = Object.values(users).some(user => 
+    const supervisorExists = Object.values(appUsers).some(user => 
         user.role === 'supervisor' && user.displayName === supervisor
     );
 
-    if (!supervisorExists && supervisor !== '') { // Allow empty supervisor if needed
+    if (!supervisorExists && supervisor !== '') {
         alert("The linked Supervisor Display Name does not exist or is not a supervisor user. Please ensure the display name matches an existing supervisor user.");
         return;
     }
 
-
+    // Check if employee with this Tech # already exists in current `employees` array
     if (employees.some(emp => emp.techNumber === techNumber)) {
         alert("An employee with this Tech # already exists.");
         return;
     }
 
     const newEmployee = {
-        id: Date.now().toString(),
         area,
         techNumber,
         firstName,
         lastName,
-        supervisor, // Store the supervisor's display name
-        status: 'Working'
+        supervisor,
+        calendar: {} // Initialize with an empty calendar map for Firestore
     };
-    employees.push(newEmployee);
-    localStorage.setItem('employees', JSON.stringify(employees));
-    addEmployeeForm.reset();
-    renderEmployeeList();
-    renderShiftsCalendar();
+
+    try {
+        await window.firebaseSetDoc(window.firebaseDoc(window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`)), newEmployee);
+        addEmployeeForm.reset();
+        alert("Employee added successfully!");
+    } catch (error) {
+        console.error("Error adding employee:", error);
+        alert("Error adding employee. Check console.");
+    }
 });
 
 function renderEmployeeList() {
@@ -489,9 +602,9 @@ function renderEmployeeList() {
             <td>${emp.techNumber}</td>
             <td>${emp.firstName}</td>
             <td>${emp.lastName}</td>
-            <td>${emp.supervisor || ''}</td> <!-- Display supervisor's display name -->
+            <td>${emp.supervisor || ''}</td>
             <td>
-                ${currentUser.role === 'admin' ? `<button onclick="editEmployee('${emp.id}')">Edit</button>
+                ${currentUser && currentUser.role === 'admin' ? `<button onclick="editEmployee('${emp.id}')">Edit</button>
                                                    <button onclick="deleteEmployee('${emp.id}')">Delete</button>` : ''}
             </td>
         `;
@@ -499,8 +612,8 @@ function renderEmployeeList() {
     });
 }
 
-function editEmployee(id) {
-    if (currentUser.role !== 'admin') {
+async function editEmployee(id) {
+    if (!currentUser || currentUser.role !== 'admin') {
         alert("Only administrators can edit employees.");
         return;
     }
@@ -510,52 +623,71 @@ function editEmployee(id) {
         const newTechNumber = prompt("New Tech #:", employee.techNumber);
         const newFirstName = prompt("New First Name:", employee.firstName);
         const newLastName = prompt("New Last Name:", employee.lastName);
-        const newSupervisor = prompt("New Supervisor (Display Name):", employee.supervisor); // Prompt for supervisor DISPLAY name
+        const newSupervisor = prompt("New Supervisor (Display Name):", employee.supervisor);
         
-        // Validate that the entered supervisor display name exists as a supervisor
-        const supervisorExists = Object.values(users).some(user => 
-            user.role === 'supervisor' && user.displayName === newSupervisor
-        );
-
-        if (!supervisorExists && newSupervisor !== null && newSupervisor.trim() !== '') {
-            alert("The linked Supervisor Display Name does not exist or is not a supervisor user. Please enter an existing supervisor's display name.");
-            return; // Stop editing if invalid supervisor
+        if (newArea === null || newTechNumber === null || newFirstName === null || newLastName === null || newSupervisor === null) {
+            // User cancelled one of the prompts
+            return;
         }
 
-        if (newArea !== null) employee.area = newArea;
-        if (newTechNumber !== null) employee.techNumber = newTechNumber;
-        if (newFirstName !== null) employee.firstName = newFirstName;
-        if (newLastName !== null) employee.lastName = newLastName;
-        // Only update if not null and validated, or if it's explicitly being cleared
-        if (newSupervisor !== null) employee.supervisor = newSupervisor.trim(); // Trim to ensure empty string if user clears it
+        const trimmedSupervisor = newSupervisor.trim();
 
-        localStorage.setItem('employees', JSON.stringify(employees));
-        renderEmployeeList();
-        renderShiftsCalendar();
+        // Validate that the entered supervisor display name exists as a supervisor
+        const supervisorExists = Object.values(appUsers).some(user => 
+            user.role === 'supervisor' && user.displayName === trimmedSupervisor
+        );
+
+        if (!supervisorExists && trimmedSupervisor !== '') {
+            alert("The linked Supervisor Display Name does not exist or is not a supervisor user. Please enter an existing supervisor's display name.");
+            return;
+        }
+
+        // Check if Tech # already exists for another employee (excluding the current one being edited)
+        if (employees.some(emp => emp.id !== id && emp.techNumber === newTechNumber)) {
+            alert("An employee with this Tech # already exists.");
+            return;
+        }
+
+        const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, id);
+        try {
+            await window.firebaseUpdateDoc(employeeRef, {
+                area: newArea,
+                techNumber: newTechNumber,
+                firstName: newFirstName,
+                lastName: newLastName,
+                supervisor: trimmedSupervisor
+            });
+            alert("Employee updated successfully!");
+        } catch (error) {
+            console.error("Error updating employee:", error);
+            alert("Error updating employee. Check console.");
+        }
     }
 }
 
-function deleteEmployee(id) {
-    if (currentUser.role !== 'admin') {
+async function deleteEmployee(id) {
+    if (!currentUser || currentUser.role !== 'admin') {
         alert("Only administrators can delete employees.");
         return;
     }
-    if (confirm("Are you sure you want to delete this employee?")) {
-        employees = employees.filter(emp => emp.id !== id);
-        delete calendarData[id];
-        localStorage.setItem('employees', JSON.stringify(employees));
-        localStorage.setItem('calendarData', JSON.stringify(calendarData));
-        renderEmployeeList();
-        renderShiftsCalendar();
+    // Use custom modal for confirm in real app, alert for demo
+    if (confirm("Are you sure you want to delete this employee? This cannot be undone.")) {
+        const employeeRef = window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`, id);
+        try {
+            await window.firebaseDeleteDoc(employeeRef);
+            alert("Employee deleted successfully!");
+        } catch (error) {
+            console.error("Error deleting employee:", error);
+            alert("Error deleting employee. Check console.");
+        }
     }
 }
 
-// --- NEW: User Management Functions (Admin) ---
+// --- User Management Functions (Admin) ---
 
-// Handle add user form submission
-addUserForm.addEventListener('submit', (e) => {
+addUserForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (currentUser.role !== 'admin') {
+    if (!currentUser || currentUser.role !== 'admin') {
         alert("Only administrators can manage users.");
         return;
     }
@@ -563,56 +695,54 @@ addUserForm.addEventListener('submit', (e) => {
     const newUsername = newUsernameInput.value.trim();
     const newPassword = newPasswordInput.value.trim();
     const newUserRole = newUserRoleSelect.value;
-    let newSupervisorDisplayName = newSupervisorNameInput.value.trim(); // Get potential display name
+    let newSupervisorDisplayName = newSupervisorNameInput.value.trim();
 
-    userCreationMessage.textContent = ''; // Clear previous messages
+    userCreationMessage.textContent = '';
 
     if (!newUsername || !newPassword) {
         userCreationMessage.textContent = 'Username and password cannot be empty.';
         return;
     }
 
-    if (users[newUsername]) {
+    if (appUsers[newUsername]) { // Check against Firestore-loaded appUsers
         userCreationMessage.textContent = `User '${newUsername}' already exists.`;
         return;
     }
 
-    // Add the new user
-    users[newUsername] = {
+    const newUserDoc = {
         password: newPassword,
         role: newUserRole
     };
 
-    // If it's a supervisor role, store the display name. If empty, default to username.
     if (newUserRole === 'supervisor') {
-        users[newUsername].displayName = newSupervisorDisplayName || newUsername;
-    } else {
-        // Ensure displayName is not set for admin users, or explicitly undefined
-        delete users[newUsername].displayName;
+        newUserDoc.displayName = newSupervisorDisplayName || newUsername;
     }
     
-    localStorage.setItem('users', JSON.stringify(users)); // Persist users
-    addUserForm.reset(); // Clear form
-    newSupervisorNameInput.value = ''; // Ensure this is also cleared
-    userCreationMessage.textContent = `User '${newUsername}' (${newUserRole}) created successfully.`;
-    userCreationMessage.style.color = 'green';
-    
-    renderUserList(); // Update user list in UI
+    try {
+        // Use username as the document ID for appUsers for easy lookup
+        await window.firebaseSetDoc(window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, newUsername), newUserDoc);
+        addUserForm.reset();
+        newSupervisorNameInput.value = '';
+        userCreationMessage.textContent = `User '${newUsername}' (${newUserRole}) created successfully.`;
+        userCreationMessage.style.color = 'green';
+    } catch (error) {
+        console.error("Error creating user:", error);
+        userCreationMessage.textContent = "Error creating user. Check console.";
+        userCreationMessage.style.color = 'red';
+    }
 });
 
-// Render the list of existing users
 function renderUserList() {
     userListBody.innerHTML = '';
-    for (const username in users) {
-        const user = users[username];
+    for (const username in appUsers) { // Iterate over appUsers from Firestore
+        const user = appUsers[username];
         const row = document.createElement('tr');
-        // Display supervisor's displayName if available
         const userDisplayInfo = user.role === 'supervisor' && user.displayName ? `(Display: ${user.displayName})` : '';
         row.innerHTML = `
             <td>${username}</td>
             <td>${user.role} ${userDisplayInfo}</td>
             <td>
-                ${currentUser.role === 'admin' && username !== currentUser.username ? `
+                ${currentUser && currentUser.role === 'admin' && username !== currentUser.username ? `
                     <button onclick="deleteUser('${username}')" style="background-color: #dc3545;">Delete</button>
                 ` : ''}
             </td>
@@ -621,9 +751,8 @@ function renderUserList() {
     }
 }
 
-// Delete a user (Admin only, cannot delete self)
-function deleteUser(usernameToDelete) {
-    if (currentUser.role !== 'admin') {
+async function deleteUser(usernameToDelete) {
+    if (!currentUser || currentUser.role !== 'admin') {
         alert("Only administrators can delete users.");
         return;
     }
@@ -631,41 +760,57 @@ function deleteUser(usernameToDelete) {
         alert("You cannot delete your own user account.");
         return;
     }
-    if (confirm(`Are you sure you want to delete user '${usernameToDelete}'? This cannot be undone.`)) {
-        // Before deleting a user, check if any employees are linked to their displayName
-        const userToDeleteDisplayName = users[usernameToDelete]?.displayName || usernameToDelete;
-        const employeesLinkedToUser = employees.filter(emp => emp.supervisor === userToDeleteDisplayName);
 
-        if (employeesLinkedToUser.length > 0) {
-            alert(`Cannot delete user '${usernameToDelete}' because ${employeesLinkedToUser.length} employee(s) are still linked to '${userToDeleteDisplayName}'. Please reassign these employees first.`);
+    // Get the display name of the user to delete
+    const userToDeleteDisplayName = appUsers[usernameToDelete]?.displayName || usernameToDelete;
+
+    // Check if any employees are linked to this supervisor's displayName
+    const q = window.firebaseQuery(
+        window.firebaseCollection(db, `artifacts/${appId}/public/data/${COLLECTIONS.EMPLOYEES}`),
+        window.firebaseWhere('supervisor', '==', userToDeleteDisplayName)
+    );
+    
+    try {
+        const querySnapshot = await window.firebaseGetDocs(q);
+        if (querySnapshot.size > 0) {
+            alert(`Cannot delete user '${usernameToDelete}' because ${querySnapshot.size} employee(s) are still linked to '${userToDeleteDisplayName}'. Please reassign these employees first.`);
             return;
         }
 
-        delete users[usernameToDelete];
-        localStorage.setItem('users', JSON.stringify(users));
-        renderUserList();
-        alert(`User '${usernameToDelete}' deleted.`);
+        // If no linked employees, proceed with deletion
+        if (confirm(`Are you sure you want to delete user '${usernameToDelete}'? This cannot be undone.`)) {
+            await window.firebaseDeleteDoc(window.firebaseDoc(db, `artifacts/${appId}/public/data/${COLLECTIONS.APP_USERS}`, usernameToDelete));
+            alert(`User '${usernameToDelete}' deleted.`);
+        }
+    } catch (error) {
+        console.error("Error checking/deleting user:", error);
+        alert("Error deleting user. Check console.");
     }
 }
 
 // Optional: Toggle visibility of Supervisor Name input based on role selection
-newUserRoleSelect.addEventListener('change', () => {
-    if (newUserRoleSelect.value === 'admin') {
-        newSupervisorNameInput.style.display = 'none';
-        newSupervisorNameInput.removeAttribute('required');
-    } else {
-        newSupervisorNameInput.style.display = 'block';
-        newSupervisorNameInput.setAttribute('required', 'required');
+// This listener needs to be set up after DOM elements are available
+document.addEventListener('DOMContentLoaded', () => {
+    if (newUserRoleSelect && newSupervisorNameInput) {
+        newUserRoleSelect.addEventListener('change', () => {
+            if (newUserRoleSelect.value === 'admin') {
+                newSupervisorNameInput.style.display = 'none';
+                newSupervisorNameInput.removeAttribute('required');
+            } else {
+                newSupervisorNameInput.style.display = 'block';
+                newSupervisorNameInput.setAttribute('required', 'required');
+            }
+        });
+        // Initialize visibility on load
+        newUserRoleSelect.dispatchEvent(new Event('change'));
     }
 });
-// Initialize visibility on load
-newUserRoleSelect.dispatchEvent(new Event('change'));
 
 
 // --- Excel Export Function ---
 
 exportExcelButton.addEventListener('click', () => {
-    if (currentUser.role !== 'admin') {
+    if (!currentUser || currentUser.role !== 'admin') {
         alert("Only administrators can export the calendar.");
         return;
     }
@@ -677,7 +822,6 @@ function exportCalendarToExcel() {
     const headerRow2 = ['', '', '', '', '', '']; 
 
     const datesForExport = [];
-    // Calculate the actual start date for the displayed range (Sunday of the week)
     const effectiveStartDate = new Date(startDate);
     effectiveStartDate.setDate(effectiveStartDate.getDate() - effectiveStartDate.getDay());
 
@@ -709,7 +853,8 @@ function exportCalendarToExcel() {
         ];
         
         datesForExport.forEach(dateString => {
-            const entry = calendarData[emp.id] ? calendarData[emp.id][dateString] : 'working';
+            // Get entry from employee.calendar field
+            const entry = emp.calendar ? emp.calendar[dateString] : 'working';
             let statusForExport = '';
 
             if (typeof entry === 'object' && entry.status === 'pending') {
@@ -744,7 +889,11 @@ function exportCalendarToExcel() {
 }
 
 
-// --- Initialization ---
-checkAuth();
-startDate = new Date(); // Re-initialize startDate to today's date on load
-renderShiftsCalendar();
+// --- Initial Setup and Event Listeners (moved to be called after Firebase is ready) ---
+// The main initialization for app logic will now happen once Firebase authentication is confirmed.
+// The DOMContentLoaded listener in index.html will call window.onFirebaseReady, which in turn
+// sets up auth listeners and calls setupFirestoreListeners.
+// Initial calls to renderShiftsCalendar, etc., are managed by the Firestore listeners.
+
+// Ensure prompt listeners are set up for supervisor name visibility
+// The 'change' event listener is now inside DOMContentLoaded handler.
