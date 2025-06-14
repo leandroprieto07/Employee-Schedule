@@ -6,7 +6,9 @@ import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot
 // --- Configuración de Firebase (TU PROPIA CLAVE API REAL AQUÍ) ---
 // Obtén esta configuración de tu consola de Firebase -> Configuración del proyecto -> Tus apps -> Configuración de la aplicación web.
 const firebaseConfig = {
-    apiKey: "AIzaSyC3u4FV6h1dzqQuWo2U8F7SxCe2AxoiG5M", // ¡REEMPLAZA ESTO CON TU CLAVE API REAL!
+    // IMPORTANTE: REEMPLAZA ESTE VALOR CON TU CLAVE API REAL DE FIREBASE.
+    // La que empieza con "AIzaSy..." y que encontrarás en la configuración de tu proyecto web en Firebase.
+    apiKey: "AIzaSyC3u4FV6h1dzqQuWo2U8F7SxCe2AxoiG5M", 
     authDomain: "employee-shift-calendar-81868.firebaseapp.com",
     projectId: "employee-shift-calendar-81868",
     storageBucket: "employee-shift-calendar-81868.firebasestorage.app",
